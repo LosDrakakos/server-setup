@@ -12,7 +12,8 @@
 
 	dir="$PWD"
 	UTILS="$dir/utilities.list"
-	host=DEFINEHOSTNAME
+	host=
+	IPADMIN=
 
 #Changement du hostname
 	hostname=$(cat /etc/hostname)
@@ -41,7 +42,7 @@ EOF
 
 # Ajout des Clefs SSH 
 	mkdir -p /root/.ssh/
-	echo -e 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCif5R/a+r0u0VAW+rwCDtiKDEKwWs2jq4a5zbc/mvU28vKlC4eVva6ElRtHsD/laqu2MtpZL/4/rWKCR8zMG9irTi+Xrk4WJXWASRssBikkuon0YQx4kU3f8iXsjZ0GES9cobRfJJMKvhG7Hgvm5alwLecHtUZ+NvJMFWEA6naWa3tZzhkbWiM77dgKOPIBgFJrR7RLsOQLWpZuQLB+oOvGJec1/nbUZiWpNSNf/8CvzhagXadyLiHFQJsk8ToiTqgd7DBVqZ54ar0gEL+1abglpTRJZU2RNFcmlguVFqMAmhLYNWd0XBwvCFzW49te5AnS+0E8ttqxNnQ+SVQ+djE7Qvf81Ec0s3WNnbtSfSObiTrX7ToC/SsCh5JJ21xCWyP3Va1hTHmGdiYbS6Tx/5Ii0rWnvz6CExVSo/Vw/6ZVZTrkDzCEuAR321frXf84qoZOMVhB58YsY0S/FEhHIlrNd5NtByOtfdyVFgb9dTGDuFkLGK9r35k4CtHLNDtxSSRJIFIgiRD/v8UZm64yPZwptVeU3P/zPeTqgf3myh1RsB/845Z8H/Pz1/993ofDQ8i54B5W7zoc8dPSssgoFCpjSsatmhNHtkvDRAwve7jJGTGNkDF/sJ2yfgaWJLkxHvUkn9unM59Ym3alk3ipQg0i0Ah8BsheHO9yR1Qv4e69Q==\nssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDWh6Eiv0sEkOZ4QQ+h1e+gTQ0x/nK0NGKuvMtvdsleHI7XhK2ArI815ILFkI7b2DlgsRFozAPCu5E1DL58gefyu0XxGSxaANVxPmtWxiSJUaYUQ1FAbmMGKORYMSb79S1sTBb3QMj4bTTVAX1S2g06rF+Uae4DydfPyr/LlRmtcn8AFUcKGop2AR7msU7psHXBLGet+SArynUxqpAC8490+M6XS2sNjnilP+wrq0P/TdtfkQY8jX3yYupWswWJKN8aLQ1Iox45cUDR0f1SkncBQ3rZDibRGrlUyrSQGEP0e/Y8t7DgSyK49nMSUbhvdfJ20k6srpM3gTKpjSiPuvhf gregory@gregory-desktop' >> /root/.ssh/authorized_keys
+	echo -e 'CLEF_SSH' >> /root/.ssh/authorized_keys
 
 # Verouillage du Root
 	passwd root -l
@@ -80,10 +81,8 @@ EOF
 	iptables -A OUTPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
 	
 	iptables -A INPUT -m geoip --source-country RU,CN,UA,TW,TR,SK,RO,PL,CZ,BG  -j DROP
-	iptables -A INPUT -s 88.163.22.99/32 -j ACCEPT
-	iptables -A INPUT -s 90.63.178.63/32 -j ACCEPT
-	iptables -A INPUT -s 78.226.56.137/32 -j ACCEPT
-	iptables -A INPUT -s 51.254.154.0/26 -j ACCEPT
+	iptables -A INPUT -s IPADMIN -j ACCEPT
+
 	
 	iptables-saves > /root/iptablesbkp
 	
@@ -326,10 +325,10 @@ EOF
   						set eventqueue
     						basedir /var/lib/monit/events
     						slots 100
-    						set mmonit http://USER:PASSWORD@SERVER:PORT/collector
+    						set mmonit http://USER:PASSWORD@SERVER:PORT/collector   #TO SETUP
 						set httpd port 2812
 						allow localhost
-						allow 51.254.129.104
+						allow IP_M/MONIT 											#TO SETUP
 						allow USER:PASWORD
 						include /etc/monit/conf.d/*
 
