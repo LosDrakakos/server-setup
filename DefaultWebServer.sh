@@ -15,9 +15,9 @@
 	host=DEFINEHOSTNAME
 
 #Changement du hostname
-  hostname=$(cat /etc/hostname)
+	hostname=$(cat /etc/hostname)
 	sed -i "s/$hostname/$host/g" /etc/hosts
-  sed -i "s/$hostname/$host/g" /etc/hostname
+	sed -i "s/$hostname/$host/g" /etc/hostname
 
 #Si pas de NAS
 	cat >> $dir/utilities.list << EOF
@@ -93,7 +93,7 @@ EOF
 
 	apt-get update -y
 # Upgrade  
-    apt-get upgrade -y
+	apt-get upgrade -y
 
 #Installation des Paquets de services
 	echo "postfix postfix/main_mailer_type select Internet Site" | debconf-set-selections
@@ -267,49 +267,43 @@ EOF
 					service php5-fpm restart
 				;;			
 
-				"nginx")
+			"nginx")
 
-
-					# Paramétrage php5-fpm
-
-					rm /etc/nginx/nginx.conf
-					cat >> /etc/nginx/nginx.conf << EOF
-
-						user www-data;
-						worker_processes 4;
-						pid /run/nginx.pid;
-						
-						events {
-							worker_connections 768;
-						}
-						
-						http {
-						
-							sendfile on;
-							tcp_nopush on;
-							tcp_nodelay on;
-							keepalive_timeout 65;
-							types_hash_max_size 2048;
-							include /etc/nginx/mime.types;
-							default_type application/octet-stream;
-							access_log /var/log/nginx/access.log;
-							error_log /var/log/nginx/error.log;
-							gzip on;
-							gzip_disable "msie6";
-							javascript;
-							fastcgi_cache_path /var/cache/nginx levels=1:2 keys_zone=nginxcache:10m inactive=1h max_size=1g;
-							include /etc/nginx/conf.d/*.conf;
-							include /etc/nginx/sites-enabled/*;
-						}
-						
-EOF
+				# Paramétrage php5-fpm
+				rm /etc/nginx/nginx.conf
+				cat >> /etc/nginx/nginx.conf << EOF
+					user www-data;
+					worker_processes 4;
+					pid /run/nginx.pid;
 					
-					service nginx restart
+					events {
+						worker_connections 768;
+					}
+					http {
+					
+						sendfile on;
+						tcp_nopush on;
+						tcp_nodelay on;
+						keepalive_timeout 65;
+						types_hash_max_size 2048;
+						include /etc/nginx/mime.types;
+						default_type application/octet-stream;
+						access_log /var/log/nginx/access.log;
+						error_log /var/log/nginx/error.log;
+						gzip on;
+						gzip_disable "msie6";
+						javascript;
+						fastcgi_cache_path /var/cache/nginx levels=1:2 keys_zone=nginxcache:10m inactive=1h max_size=1g;
+						include /etc/nginx/conf.d/*.conf;
+						include /etc/nginx/sites-enabled/*;
+					}
+					
+EOF
+				
+				service nginx restart
 
 				;;
 
-								case "$paquet" in
-				
 				"monit")
 
 
@@ -326,13 +320,13 @@ EOF
  						monit
  						}
 						set daemon 60           
-                 		set logfile /var/log/monit.log
+                				set logfile /var/log/monit.log
   						set idfile /var/lib/monit/id
 
   						set eventqueue
-    					basedir /var/lib/monit/events
-    					slots 100
-    					set mmonit http://USER:PASSWORD@SERVER:PORT/collector
+    						basedir /var/lib/monit/events
+    						slots 100
+    						set mmonit http://USER:PASSWORD@SERVER:PORT/collector
 						set httpd port 2812
 						allow localhost
 						allow 51.254.129.104
@@ -454,7 +448,7 @@ EOF
 	service ssh restart
 
 #Clean du sytème
-    apt-get autoremove -y
+	apt-get autoremove -y
 	apt-get clean
 	/var
 	if [ -s /var/log/PostInstall.log ]
