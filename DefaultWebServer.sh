@@ -394,7 +394,7 @@ EOF
 
 					rm /etc/monit/monitrc
 					cat >> /etc/monit/monitrc << EOF
-set alert marcopoulos@antadis.com
+set alert $EMAILRECIPIENT
 set mail-format {
 	from: monit@ \$HOST
 	subject: \$SERVICE \$EVENT at \$DATE
