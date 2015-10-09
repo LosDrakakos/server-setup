@@ -531,50 +531,6 @@ MySQLGetQTAFS   SELECT QuotaFiles FROM ftpd WHERE User="\L"AND status="1" AND (i
 EOF
 					
 					/etc/init.d/pure-ftpd-mysql restart
-
-cat >> $dir/insertftpduser.bash << EOF
-
-#!/bin/bash
-#Creation d'utlisateur pureftpd
-if [[ -z "$1" ]]; then
-	echo "Rappel sur l'utilisation de la commande : $0 Username home password" 1>&2
-	exit 1
-fi
-if [[ -z "$2" ]]; then
-	echo "Rappel sur l'utilisation de la commande : $0 Username home password" 1>&2
-	exit 1
-fi
-if [[ -z "$3" ]]; then
-	echo "Rappel sur l'utilisation de la commande : $0 Username home password" 1>&2
-	exit 1
-fi
-
-ftpdpasswd=`cat $PWD/pureftpdpasswd`
-Username="$1"
-Directory="$2"
-Password="$3"
-
-echo "use pureftpd;" > insertftpduser.sql
-echo "INSERT INTO \`ftpd\` (\`User\`, \`status\`, \`Password\`, \`Uid\`, \`Gid\`, \`Dir\`, \`ULBandwidth\`, \`DLBandwidth\`, \`comment\`, \`ipaccess\`, \`QuotaSize\`, \`QuotaFiles\`) VALUES ('$Username', '1', MD5('$Password'), '33', '33', '$Directory', '0', '0', '', '*', '0', '0');" >> insertftpduser.sql
-
-mysql -u pureftpd -p$ftpdpasswd < insertftpduser.sql
-
-
-EOF
-
-				echo "Mysql user for Pureftpd : pureftpd"  >> $dir/mail 
-				echo "Mysql Password for Pureftpd : $ftpdpasswd"  >> $dir/mail
-
-				for user in $(cat $USERSFTP)
-					do
-					apg -q -a  0 -n 1 -m 12 -M NCL >"$dir/userpasswd"
-					userpasswd=`cat $dir/userpasswd`
-					bash insertftpduser.bash $user /home/$user $userpasswd
-					echo "Pureftpd user : $user"  >> $dir/mail 
-					echo "$user homedir : /home/$user"  >> $dir/mail
-					echo "$user ftp password : $userpasswd"  >> $dir/mail 
-					echo ""  >> $dir/mail 
-				done
 				;;
 
 			esac				
