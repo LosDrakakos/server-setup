@@ -13,7 +13,7 @@ if [[ -z "$3" ]]; then
 	exit 1
 fi
 
-ftpdpasswd=`cat $PWD/pureftpdpasswd\`
+ftpdpasswd=`cat $PWD/pureftpdpasswd`
 Username="$1"
 Directory="$2"
 Password="$3"
