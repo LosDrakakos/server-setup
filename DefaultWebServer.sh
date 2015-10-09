@@ -78,7 +78,7 @@ EOF
 #----- FIN DECLARATIONS -----#
 ##############################
 
-	echo "subject : fin de l'installation de $hostn" > $dir/mail
+	echo "subject : $hostn Postinstall Report" > $dir/mail
 
 #Replacing Hostname you'll need to reboot at the end of the script
 	hostname=$(cat /etc/hostname)
