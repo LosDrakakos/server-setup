@@ -176,8 +176,7 @@ done
 			if [ "$paquet" = "mysql-server" ]
 			then
 					#Génération du Passwd mysql
-					apt-get install -y -q --no-install-recommends apg
-					apg -q -a  0 -n 1 -m 12 -M NCL >"$dir/mysqlpasswd"
+					openssl rand -base64 8 | sed s/=// >"$dir/mysqlpasswd"
 					mysqlpasswd=`cat $dir/mysqlpasswd`
 					echo "mysql-server mysql-server/root_password password $mysqlpasswd" | debconf-set-selections
 					echo "mysql-server mysql-server/root_password_again password $mysqlpasswd" | debconf-set-selections
@@ -486,7 +485,7 @@ EOF
 				
 					# Paramétrage pureftpd-mysql
 
-					apg -q -a  0 -n 1 -m 12 -M NCL > $dir/pureftpdpasswd
+					openssl rand -base64 8 | sed s/=// > $dir/pureftpdpasswd
 					ftpdpasswd=`cat $dir/pureftpdpasswd` 
 
 					cat > $dir/createdb.sql << EOF
@@ -563,24 +562,18 @@ EOF
 				wget -q https://raw.githubusercontent.com/Cthulhuely/PostInstallScript/master/insertftpduser.bash #Get ftp users creation script from my github
 				#Pour l'infra distribuée Get depuis le NAS (Don't Mind this comment)
 
-				echo "Mysql user for Pureftpd : pureftpd"  >> $dir/mail 
+				echo "Mysql user for Pureftpd : pureftpd" >> $dir/mail 
 				echo "Mysql Password for Pureftpd : $ftpdpasswd"  >> $dir/mail
 
 				for ftpuser in $(cat $USERSFTP)
 					do
-					echo "$ftpuser"
-					apg -q -a  0 -n 1 -m 12 -M NCL >"$dir/userpasswd$ftpuser"
-					echo "BIAAAAAAAAAATCH"
-					userpasswd=`cat $dir/userpasswd$ftpuser`
-					echo "PUUUUUTEEEEEEEEEEUUUUUH"
+					openssl rand -base64 8 | sed s/=// > "$dir/userpasswd"
+					userpasswd=`cat $dir/userpasswd`
 					bash insertftpduser.bash $ftpuser /home/$ftpuser $userpasswd
-					echo "PERIPATETICIENNEUUUUUUH"
-					echo "Pureftpd user : $ftpuser"  >> $dir/mail 
-					echo "TRAVAILEUSE DU SEXEUUUUH"
-					echo "$ftpuser homedir : /home/$ftpuser"  >> $dir/mail
-					echo "$ftpuser ftp password : $userpasswd"  >> $dir/mail 
-					echo ""  >> $dir/mail
-					echo "SALLLLOOOOOPPEUUUUUUH"
+					echo "Pureftpd user : $ftpuser" >> $dir/mail 
+					echo "$ftpuser homedir : /home/$ftpuser" >> $dir/mail
+					echo "$ftpuser ftp password : $userpasswd" >> $dir/mail 
+					echo "" >> $dir/mail
 				done
 				;;
 
