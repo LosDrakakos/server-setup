@@ -25,6 +25,7 @@
 	MONITSERVER="mmonit.example.com" #M/Monit Server FQDN or IP Address
 	MONITUSER="mmonituser" #Distant M/Monit User
 	MONITPASSWORD="mmonitpasswd" #Distant M/Monit User Password
+	SSH_PORT="22" #SSH Listening port, 22 is default, I recommend to change it
 
 #GET du Utilities depuis le NAS (Don't mind this comment)
 #Si pas de NAS (Don't mind this comment)
@@ -77,7 +78,7 @@ EOF
 #----- FIN DECLARATIONS -----#
 ##############################
 
-	echo "subject : $hostn post install report" > $dir/mail
+	echo "subject : $hostn Postinstall Report" > $dir/mail
 
 #Replacing Hostname you'll need to reboot at the end of the script
 	hostname=$(cat /etc/hostname)
@@ -92,12 +93,12 @@ EOF
 	fi
 	exec 2>>/var/log/PostInstall.log
 
-# Ajout des Clefs SSH 
+# SSH Key ADD
 	mkdir -p /root/.ssh/
 	echo -e "$CLEF_SSH" >> /root/.ssh/authorized_keys
 
 # Locking root Password Login
-	passwd root -l #comment if you don't use ssh key
+	passwd root -l
 
 # Update&Upgrade
 #Sometimes there's issues with Digital Oceans Repo
@@ -487,7 +488,7 @@ EOF
 				
 					# Pureftpd-mysql Setup
 
-					apg -q -a  0 -n 1 -m 12 -M NCL > $dir/pureftpdpasswd
+					openssl rand -base64 8 | sed s/=// > $dir/pureftpdpasswd
 					ftpdpasswd=`cat $dir/pureftpdpasswd` 
 
 					cat > $dir/createdb.sql << EOF
@@ -531,6 +532,23 @@ MySQLGetQTAFS   SELECT QuotaFiles FROM ftpd WHERE User="\L"AND status="1" AND (i
 EOF
 					
 					/etc/init.d/pure-ftpd-mysql restart
+
+				wget -q https://raw.githubusercontent.com/Cthulhuely/PostInstallScript/master/insertftpduser.bash #Get ftp users creation script from my github
+				#Pour l'infra distribuée Get depuis le NAS (Don't Mind this comment)
+
+				echo "Mysql user for Pureftpd : pureftpd" >> $dir/mail 
+				echo "Mysql Password for Pureftpd : $ftpdpasswd"  >> $dir/mail
+				#Creating FTP Users Defined in Declarations
+				for ftpuser in $(cat $USERSFTP)
+					do
+					openssl rand -base64 8 | sed s/=// > "$dir/userpasswd"
+					userpasswd=`cat $dir/userpasswd`
+					bash insertftpduser.bash $ftpuser /home/$ftpuser $userpasswd
+					echo "Pureftpd user : $ftpuser" >> $dir/mail 
+					echo "$ftpuser homedir : /home/$ftpuser" >> $dir/mail
+					echo "$ftpuser ftp password : $userpasswd" >> $dir/mail 
+					echo "" >> $dir/mail
+				done
 				;;
 
 			esac				
@@ -539,7 +557,7 @@ EOF
 #SSH Setup
 	rm /etc/ssh/sshd_config 
 	cat >> /etc/ssh/sshd_config  << EOF
-		Port 4096
+		Port $SSH_PORT
 		Protocol 2
 		HostKey /etc/ssh/ssh_host_rsa_key
 		HostKey /etc/ssh/ssh_host_dsa_key
