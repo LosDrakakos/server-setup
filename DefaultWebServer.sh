@@ -25,6 +25,7 @@
 	MONITSERVER="mmonit.example.com" #M/Monit Server FQDN or IP Address
 	MONITUSER="mmonituser" #Distant M/Monit User
 	MONITPASSWORD="mmonitpasswd" #Distant M/Monit User Password
+	SSH_PORT="22" #SSH Listening port, 22 is default, I recommend to change it
 
 #GET du Utilities depuis le NAS (Don't mind this comment)
 #Si pas de NAS (Don't mind this comment)
@@ -79,12 +80,12 @@ EOF
 
 	echo "subject : fin de l'installation de $hostn" > $dir/mail
 
-#Changement du hostname
+#Replacing Hostname you'll need to reboot at the end of the script
 	hostname=$(cat /etc/hostname)
 	sed -i "s/$hostname/$hostn/g" /etc/hosts
 	sed -i "s/$hostname/$hostn/g" /etc/hostname
 
-#Ecritures des erreurs dans Variable
+#Logging Errors
 	if [ -s /var/log/PostInstall.log ]
 		then
 		rm /var/log/PostInstall.log
@@ -92,21 +93,21 @@ EOF
 	fi
 	exec 2>>/var/log/PostInstall.log
 
-# Ajout des Clefs SSH 
+# SSH Key ADD
 	mkdir -p /root/.ssh/
 	echo -e "$CLEF_SSH" >> /root/.ssh/authorized_keys
 
-# Verouillage du Root
+# Locking root Password Login
 	passwd root -l
 
 # Update&Upgrade
-#Ajout des Repos car problème avec repos DO
-
-cat > /etc/apt/sources.list << EOF
-deb http://fr.archive.ubuntu.com/ubuntu/ trusty main restricted universe multiverse 
-deb http://fr.archive.ubuntu.com/ubuntu/ trusty-security main restricted universe multiverse 
-deb http://fr.archive.ubuntu.com/ubuntu/ trusty-updates main restricted universe multiverse 
-EOF
+#Sometimes there's issues with Digital Oceans Repo
+#Fell free to uncomment to use thoose instead (or just use any other repo you want
+#cat > /etc/apt/sources.list << EOF
+#deb http://fr.archive.ubuntu.com/ubuntu/ trusty main restricted universe multiverse 
+#deb http://fr.archive.ubuntu.com/ubuntu/ trusty-security main restricted universe multiverse 
+#deb http://fr.archive.ubuntu.com/ubuntu/ trusty-updates main restricted universe multiverse 
+#EOF
 
 	apt-get update -y
 
@@ -150,7 +151,7 @@ EOF
 	iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
 	iptables -A OUTPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
 	
-	iptables -A INPUT -m geoip --source-country RU,CN,UA,TW,TR,SK,RO,PL,CZ,BG  -j DROP #Blocking potentially botnet zone (No offense intended if you live here, it's my client policy...)
+	iptables -A INPUT -m geoip --source-country RU,CN,UA,TW,TR,SK,RO,PL,CZ,BG  -j DROP #Blocking potential botnet zone (No offense intended if you live here, but it's my client policy...)
 
 for ipok in $(cat $WHITE)
 	do
@@ -163,7 +164,8 @@ done
 	echo "/sbin/iptables-restore < /root/iptablesbkp" >> /etc/rc.local
 
 #Paquets installation
-	echo "postfix postfix/main_mailer_type select Internet Site" | debconf-set-selections
+	#Always installed Postfix & Rootkit Hunter
+	echo "postfix postfix/main_mailer_type select Internet Site" | debconf-set-selections # Postfix Preinstall setup
 	echo "postfix postfix/mailname string $hostn" | debconf-set-selections
 	apt-get install rkhunter postfix -y
 
@@ -171,12 +173,13 @@ done
 		do
 			echo -e '\t'$paquet
 						
-			#MYSQL
+			#MYSQL PreInstall & Install
 			
 			if [ "$paquet" = "mysql-server" ]
 			then
-					#Génération du Passwd mysql
-					openssl rand -base64 8 | sed s/=// >"$dir/mysqlpasswd"
+					#Mysql Passwd gen
+					apt-get install -y -q --no-install-recommends apg
+					apg -q -a  0 -n 1 -m 12 -M NCL >"$dir/mysqlpasswd"
 					mysqlpasswd=`cat $dir/mysqlpasswd`
 					echo "mysql-server mysql-server/root_password password $mysqlpasswd" | debconf-set-selections
 					echo "mysql-server mysql-server/root_password_again password $mysqlpasswd" | debconf-set-selections
@@ -192,7 +195,7 @@ done
 			fi 
 		done
 
-#Paquets Set-Up
+#Paquets SetUp
 	for paquet in $(cat $UTILS)
 		do
 			case "$paquet" in
@@ -200,7 +203,7 @@ done
 				"php5-fpm")
 
 
-					# Paramétrage php5-fpm
+					# PHP5-FPM Setup
 
 					rm /etc/php5/fpm/php.ini
 					cat >> /etc/php5/fpm/php.ini << EOF
@@ -335,7 +338,7 @@ EOF
 
 			"nginx")
 
-				# Paramétrage nginx
+				# Nginx Setup
 			rm /etc/nginx/nginx.conf
 cat >> /etc/nginx/nginx.conf << EOF
 	user www-data;
@@ -388,7 +391,7 @@ EOF
 
 				"monit")
 
-					# Paramétrage monit
+					# Monit Setup
 
 					rm /etc/monit/monitrc
 					cat >> /etc/monit/monitrc << EOF
@@ -483,7 +486,7 @@ EOF
 			;;
 				"pure-ftpd-mysql")
 				
-					# Paramétrage pureftpd-mysql
+					# Pureftpd-mysql Setup
 
 					openssl rand -base64 8 | sed s/=// > $dir/pureftpdpasswd
 					ftpdpasswd=`cat $dir/pureftpdpasswd` 
@@ -530,41 +533,12 @@ EOF
 					
 					/etc/init.d/pure-ftpd-mysql restart
 
-# cat >> $dir/insertftpduser.bash << EOF
-
-#\!/bin/bash
-#Creation d'utlisateur pureftpd
-# if [[ -z "\$1" ]]; then
-# 	echo "Rappel sur l'utilisation de la commande : \$0 Username home password" 1>&2
-# 	exit 1
-# fi
-# if [[ -z "\$2" ]]; then
-# 	echo "Rappel sur l'utilisation de la commande : \$0 Username home password" 1>&2
-# 	exit 1
-# fi
-# if [[ -z "\$3" ]]; then
-# 	echo "Rappel sur l'utilisation de la commande : \$0 Username home password" 1>&2
-# 	exit 1
-# fi
-
-# ftpdpasswd=\`cat $PWD/pureftpdpasswd\`
-# Username="\$1"
-# Directory="\$2"
-# Password="\$3"
-
-# echo "use pureftpd;" > insertftpduser.sql
-# echo "INSERT INTO \`ftpd\` (\`User\`, \`status\`, \`Password\`, \`Uid\`, \`Gid\`, \`Dir\`, \`ULBandwidth\`, \`DLBandwidth\`, \`comment\`, \`ipaccess\`, \`QuotaSize\`, \`QuotaFiles\`) VALUES ('$Username', '1', MD5('$Password'), '33', '33', '$Directory', '0', '0', '', '*', '0', '0');" >> insertftpduser.sql
-
-# mysql -u pureftpd -p\$ftpdpasswd < insertftpduser.sql
-
-
-#EOF
 				wget -q https://raw.githubusercontent.com/Cthulhuely/PostInstallScript/master/insertftpduser.bash #Get ftp users creation script from my github
 				#Pour l'infra distribuée Get depuis le NAS (Don't Mind this comment)
 
 				echo "Mysql user for Pureftpd : pureftpd" >> $dir/mail 
 				echo "Mysql Password for Pureftpd : $ftpdpasswd"  >> $dir/mail
-
+				#Creating FTP Users Defined in Declarations
 				for ftpuser in $(cat $USERSFTP)
 					do
 					openssl rand -base64 8 | sed s/=// > "$dir/userpasswd"
@@ -580,10 +554,10 @@ EOF
 			esac				
 
 		done
-# Paramétrage SSH
+#SSH Setup
 	rm /etc/ssh/sshd_config 
 	cat >> /etc/ssh/sshd_config  << EOF
-		Port 4096
+		Port $SSH_PORT
 		Protocol 2
 		HostKey /etc/ssh/ssh_host_rsa_key
 		HostKey /etc/ssh/ssh_host_dsa_key
@@ -619,7 +593,7 @@ EOF
 					
 	service ssh restart
 
-#Clean du sytème
+#System Cleaning
 	apt-get autoremove -y
 	apt-get clean
 	
@@ -629,12 +603,12 @@ EOF
 		cat /var/log/PostInstall.log 
 		cat /var/log/PostInstall.log  >> $dir/mail
 		sendmail $EMAILRECIPIENT < $dir/mail
-		rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/pureftpdpasswd $dir/utilities.list
+		rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list
 		exit 1
 	else
 		echo 'Fin du script sans erreurs \o/' >> /var/log/PostInstall.log
 		cat /var/log/PostInstall.log  >> $dir/mail
 		sendmail $EMAILRECIPIENT < $dir/mail
-		rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/pureftpdpasswd $dir/utilities.list
+		rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list
 		exit 0
 	fi
