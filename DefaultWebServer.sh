@@ -560,12 +560,12 @@ EOF
 		Port $SSH_PORT
 		Protocol 2
 		HostKey /etc/ssh/ssh_host_rsa_key
-		HostKey /etc/ssh/ssh_host_dsa_key
+		# HostKey /etc/ssh/ssh_host_dsa_key
 		HostKey /etc/ssh/ssh_host_ecdsa_key
 		HostKey /etc/ssh/ssh_host_ed25519_key
 		UsePrivilegeSeparation yes
 		KeyRegenerationInterval 3600
-		ServerKeyBits 1024
+		ServerKeyBits 4096
 		SyslogFacility AUTH
 		LogLevel INFO
 		LoginGraceTime 120
