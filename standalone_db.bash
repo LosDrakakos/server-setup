@@ -155,8 +155,18 @@ include /etc/monit/conf.d/*
 check system \$HOST
 	if loadavg (5min) > 8 then alert
 	if loadavg (15min) > 6 then alert
-	if memory usage > 80% for 4 cycles then alert
-	if swap usage > 30% for 4 cycles then alert
+	if memory usage > 80% for 4 cycles then alert	
+	if cpu(system) is greater than 400% for 5 cycles then alert
+	if cpu(user) is greater than 400% for 5 cycles then alert
+	if cpu(wait) is greater than 400% for 5 cycles then alert
+	if cpu(system) is greater than 800% for 5 cycles then alert
+    if cpu(user) is greater than 800% for 5 cycles then alert
+    if cpu(wait) is greater than 800% for 5 cycles then alert
+
+check process nginx with pidfile /var/run/nginx.pid
+	start program = "/etc/init.d/nginx start"
+	stop program  = "/etc/init.d/nginx stop"
+	group www-data
 
 check process syslogd with pidfile /var/run/rsyslogd.pid
 	start program = "/etc/init.d/rsyslog start"
@@ -179,15 +189,9 @@ check file postfix_rc with path /etc/init.d/postfix
 	if failed uid root then unmonitor
 	if failed gid root then unmonitor
 
-check process mysql with pidfile /var/run/mysqld/mysqld.pid
-	group database
-	start program = "/etc/init.d/mysql start"
-	stop program = "/etc/init.d/mysql stop"
-	if failed host 127.0.0.1 port 3306 protocol mysql then alert
-
 check process sshd with pidfile /var/run/sshd.pid
-	start program  "/etc/init.d/sshd start"
-	stop program  "/etc/init.d/sshd stop"
+	start program  "/etc/init.d/ssh start"
+	stop program  "/etc/init.d/ssh stop"
 	if failed port $SSH_PORT protocol ssh then alert
 
 EOF
