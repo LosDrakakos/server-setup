@@ -6,7 +6,7 @@
 #Feel free to open Issues or to make pull request on my github
 
 #Test if executed as root
-
+export DEBIAN_FRONTEND=noninteractive
 	if [ "$(id -u)" != "0" ]; then
 		echo "Script must be launched as root: # sudo $0" 1>&2
 		exit 1
@@ -22,6 +22,7 @@
 	hostn="srv.example.com"	#Server Hostname (Please use a FSQN and don't forget to setup your PTR)
 	CLEF_SSH='KEY1\nKEY2\KEY3' 	#Separate Key with \n
 	EMAILRECIPIENT='me@example.com, my_colleague@example.com, another_colleague@example.com' #A mail will be sent to theese with the differents passwords generated Followed by the Error Log, there's no email adress limit
+	MONITRECIPIENT='me@example.com' #Address that will be directly alerted by monit (mmonit notif are independant) PLEASE ONLY USE ONE ADRESS HERE
 	MONITSERVER="mmonit.example.com" #M/Monit Server FQDN or IP Address
 	MONITUSER="mmonituser" #Distant M/Monit User
 	MONITPASSWORD="mmonitpasswd" #Distant M/Monit User Password
@@ -117,6 +118,7 @@ EOF
 # Firewall Whitelist
 	
 	#Install GEOIP
+	exec 2>>/var/log/Build.log #Special Error Log for xtable If any error while enabling Iptable GEOIP rules, check this log.
 	apt-get install iptables iptables-dev module-assistant xtables-addons-common libtext-csv-xs-perl unzip build-essential -y -q
 	module-assistant auto-install xtables-addons -i -q -n
 
@@ -129,7 +131,7 @@ EOF
 	mkdir -p /usr/share/xt_geoip/  
 	cp -r {BE,LE} /usr/share/xt_geoip/
 	cd $dir
-
+	exec 2>>/var/log/PostInstall.log #Back to normal Log
 	#Whitelist
 	iptables -F
 	iptables -t filter -P OUTPUT DROP
@@ -144,9 +146,14 @@ EOF
 	iptables -t filter -A OUTPUT -p udp --dport 53 -j ACCEPT
 	iptables -t filter -A OUTPUT -p udp --dport 123 -j ACCEPT
 	iptables -t filter -A OUTPUT -p tcp --dport 443 -j ACCEPT
+	iptables -t filter -A OUTPUT -p tcp --dport 2812 -j ACCEPT
 	iptables -t filter -A INPUT -p tcp --dport 443 -j ACCEPT
 	iptables -t filter -A INPUT -p tcp --dport 80 -j ACCEPT
 	iptables -t filter -A INPUT -p tcp --dport 21 -j ACCEPT
+	iptables -t filter -A INPUT -p tcp --sport 2812 -j ACCEPT
+
+	iptables -A INPUT -i eth0 -p icmp -j ACCEPT
+
 			
 	iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
 	iptables -A OUTPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
@@ -167,34 +174,35 @@ done
 	#Always installed Postfix & Rootkit Hunter
 	echo "postfix postfix/main_mailer_type select Internet Site" | debconf-set-selections # Postfix Preinstall setup
 	echo "postfix postfix/mailname string $hostn" | debconf-set-selections
-	apt-get install rkhunter postfix -y
-
+	apt-get install rkhunter postfix openssl -y -q
+		echo "" >> $dir/mail
+		echo "Paquets installés" >> $dir/mail
+		echo "" >> $dir/mail
 		for paquet in $(cat $UTILS)
 		do
-			echo -e '\t'$paquet
+			echo "$paquet" >> $dir/mail
 						
 			#MYSQL PreInstall & Install
 			
 			if [ "$paquet" = "mysql-server" ]
 			then
 					#Mysql Passwd gen
-					apt-get install -y -q --no-install-recommends apg
-					apg -q -a  0 -n 1 -m 12 -M NCL >"$dir/mysqlpasswd"
+					openssl rand -base64 12 | sed s/=// >"$dir/mysqlpasswd"
 					mysqlpasswd=`cat $dir/mysqlpasswd`
 					echo "mysql-server mysql-server/root_password password $mysqlpasswd" | debconf-set-selections
 					echo "mysql-server mysql-server/root_password_again password $mysqlpasswd" | debconf-set-selections
 					#Install
-					apt-get install mysql-server -y
+					apt-get install mysql-server -y -q
 
 				echo "Mysql user : root"  >> $dir/mail 
 				echo "Mysql root Password : $mysqlpasswd"  >> $dir/mail
 				echo ""  >> $dir/mail
 			else
 				#installation du paquet
-				apt-get install $paquet -y
+				apt-get install $paquet -y -q
 			fi 
 		done
-
+	echo "" >> $dir/mail
 #Paquets SetUp
 	for paquet in $(cat $UTILS)
 		do
@@ -333,8 +341,9 @@ opcache.fast_shutdown=1
 						
 EOF
 					
-					service php5-fpm restart
-				;;			
+service php5-fpm restart
+
+					;;			
 
 			"nginx")
 
@@ -374,11 +383,12 @@ server {
     root /example/directory/;
     index index.html index.php;
 
-    location ~ \\.php$ {
+    location ~ \\.php$ 
+    {
         fastcgi_pass unix:/var/run/php5-fpm.sock;
         fastcgi_split_path_info ^(.+\\.php)(/.*)$;
         include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME \$document_root$fastcgi_script_name;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
         fastcgi_param HTTPS off;
     }
 }
@@ -395,40 +405,32 @@ EOF
 
 					rm /etc/monit/monitrc
 					cat >> /etc/monit/monitrc << EOF
-set alert $EMAILRECIPIENT
+set alert $MONITRECIPIENT
 set mail-format {
-	from: monit@ \$HOST
+	from: monit@\$HOST
 	subject: \$SERVICE \$EVENT at \$DATE
 	message: Monit \$ACTION \$SERVICE at \$DATE on \$HOST: \$DESCRIPTION.
 	Yours sincerely,
 	monit
 	}
 set daemon 60           
-          				set logfile /var/log/monit.log
-		set idfile /var/lib/monit/id
-		set eventqueue
-				basedir /var/lib/monit/events
-				slots 100
-			set mmonit http://$MONITUSER:$MONITPASSWORD@$MONITSERVER:8090/collector
+set logfile /var/log/monit.log
+set idfile /var/lib/monit/id
+set eventqueue
+	basedir /var/lib/monit/events
+	slots 100
+set mmonit http://$MONITUSER:$MONITPASSWORD@$MONITSERVER:8090/collector
 set httpd port 2812
 allow localhost
 allow $MONITSERVER
 allow $MONITUSER:$MONITPASSWORD
 include /etc/monit/conf.d/*
 check system \$HOST
-	if loadavg (5min) > 3 then alert
-	if loadavg (15min) > 1 then alert
+	if loadavg (5min) > 8 then alert
+	if loadavg (15min) > 6 then alert
 	if memory usage > 80% for 4 cycles then alert
-	if swap usage > 20% for 4 cycles then alert
-	# Test the user part of CPU usage 
-	if cpu usage (user) > 80% for 2 cycles then alert
-	# Test the system part of CPU usage 
-	if cpu usage (system) > 20% for 2 cycles then alert
-	# Test the i/o wait part of CPU usage 
-	if cpu usage (wait) > 80% for 2 cycles then alert
-	if cpu usage > 75% for 2 cycles then alert
-	if cpu usage > 100% for 2 cycles then alert	
-	if cpu usage > 200% for 4 cycles then alert	
+	if swap usage > 30% for 4 cycles then alert
+
 check process nginx with pidfile /var/run/nginx.pid
 	start program = "/etc/init.d/nginx start"
 	stop program  = "/etc/init.d/nginx stop"
@@ -455,40 +457,26 @@ check file postfix_rc with path /etc/init.d/postfix
 	if failed uid root then unmonitor
 	if failed gid root then unmonitor
 
-check process mysql with pidfile /opt/mysql/data/myserver.mydomain.pid
+check process mysql with pidfile /var/run/mysqld/mysqld.pid
 	group database
 	start program = "/etc/init.d/mysql start"
 	stop program = "/etc/init.d/mysql stop"
-	if failed host 192.168.1.1 port 3306 protocol mysql then alert
-	depends on mysql_bin
-	depends on mysql_rc
-
-check file mysql_bin with path /opt/mysql/bin/mysqld
-	group database
-		if failed checksum then unmonitor
-	if failed permission 755 then unmonitor
-	if failed uid root then unmonitor
-	if failed gid root then unmonitor
-
-check file mysql_rc with path /etc/init.d/mysql
-	group database
-	if failed checksum then unmonitor
-	if failed permission 755 then unmonitor
-	if failed uid root then unmonitor
-	if failed gid root then unmonitor
+	if failed host 127.0.0.1 port 3306 protocol mysql then alert
 
 check process sshd with pidfile /var/run/sshd.pid
-	start program  "/etc/init.d/sshd start"
-	stop program  "/etc/init.d/sshd stop"
+	start program  "/etc/init.d/ssh start"
+	stop program  "/etc/init.d/ssh stop"
 	if failed port 4096 protocol ssh then alert
 
 EOF
+chmod 700 /etc/monit/monitrc
+service monit restart
 			;;
 				"pure-ftpd-mysql")
 				
 					# Pureftpd-mysql Setup
 
-					openssl rand -base64 8 | sed s/=// > $dir/pureftpdpasswd
+					openssl rand -base64 12 | sed s/=// > $dir/pureftpdpasswd
 					ftpdpasswd=`cat $dir/pureftpdpasswd` 
 
 					cat > $dir/createdb.sql << EOF
@@ -541,7 +529,7 @@ EOF
 				#Creating FTP Users Defined in Declarations
 				for ftpuser in $(cat $USERSFTP)
 					do
-					openssl rand -base64 8 | sed s/=// > "$dir/userpasswd"
+					openssl rand -base64 12 | sed s/=// > "$dir/userpasswd"
 					userpasswd=`cat $dir/userpasswd`
 					bash insertftpduser.bash $ftpuser /home/$ftpuser $userpasswd
 					echo "Pureftpd user : $ftpuser" >> $dir/mail 
@@ -594,9 +582,10 @@ EOF
 	service ssh restart
 
 #System Cleaning
-	apt-get autoremove -y
-	apt-get clean
+	apt-get autoremove -y -q
+	apt-get clean -q
 	
+	ifconfig >> $dir/mail
 
 	if [ -s /var/log/PostInstall.log ]
 	then
@@ -604,11 +593,13 @@ EOF
 		cat /var/log/PostInstall.log  >> $dir/mail
 		sendmail $EMAILRECIPIENT < $dir/mail
 		rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list
+		export DEBIAN_FRONTEND=dialog
 		exit 1
 	else
 		echo 'Fin du script sans erreurs \o/' >> /var/log/PostInstall.log
 		cat /var/log/PostInstall.log  >> $dir/mail
 		sendmail $EMAILRECIPIENT < $dir/mail
 		rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list
+		export DEBIAN_FRONTEND=dialog
 		exit 0
 	fi
