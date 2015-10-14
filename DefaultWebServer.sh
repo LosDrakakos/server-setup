@@ -461,6 +461,12 @@ check file postfix_rc with path /etc/init.d/postfix
 	if failed permission 755 then unmonitor
 	if failed uid root then unmonitor
 	if failed gid root then unmonitor
+	
+check process mysql with pidfile /var/run/mysqld/mysqld.pid
+	group database
+	start program = "/etc/init.d/mysql start"
+	stop program = "/etc/init.d/mysql stop"
+	if failed host 127.0.0.1 port 3306 protocol mysql then alert
 
 check process sshd with pidfile /var/run/sshd.pid
 	start program  "/etc/init.d/ssh start"
