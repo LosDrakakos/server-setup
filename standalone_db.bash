@@ -6,22 +6,21 @@
 #Feel free to open Issues or to make pull request on my github
 
 #Test if executed as root
-
+export DEBIAN_FRONTEND=noninteractive
 if [ "$(id -u)" != "0" ]; then
 	echo "Script must be launched as root: # sudo $0" 1>&2
 	exit 1
 fi
-
-export DEBIAN_FRONTEND=noninteractive
 ##########################
 #----- DECLARATIONS -----#
 ##########################
 
 dir="$PWD"	#Please don't modify unless you know what you are doing
 WHITE="$dir/white.list"	#Please don't modify unless you know what you are doing
-hostn="db.example.com"	#Server Hostname (Please use a FSQN and don't forget to setup your PTR)
+hostn="srv.example.com"	#Server Hostname (Please use a FSQN and don't forget to setup your PTR)
 CLEF_SSH='KEY1\nKEY2\KEY3' 	#Separate Key with \n
 EMAILRECIPIENT='me@example.com, my_colleague@example.com, another_colleague@example.com' #A mail will be sent to theese with the differents passwords generated Followed by the Error Log, there's no email adress limit
+MONITRECIPIENT='me@example.com' #Address that will be directly alerted by monit (mmonit notif are independant) PLEASE ONLY USE ONE ADRESS HERE
 MONITSERVER="mmonit.example.com" #M/Monit Server FQDN or IP Address
 MONITUSER="mmonituser" #Distant M/Monit User
 MONITPASSWORD="mmonitpasswd" #Distant M/Monit User Password
@@ -98,7 +97,6 @@ iptables -t filter -A OUTPUT -p udp --dport 53 -j ACCEPT
 iptables -t filter -A OUTPUT -p udp --dport 123 -j ACCEPT
 iptables -t filter -A OUTPUT -p tcp --dport 443 -j ACCEPT
 iptables -t filter -A OUTPUT -p tcp --dport 2812 -j ACCEPT
-
 iptables -t filter -A INPUT -p tcp --sport 2812 -j ACCEPT
 
 iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
@@ -134,7 +132,7 @@ echo ""  >> $dir/mail
 #Install Monit
 					rm /etc/monit/monitrc
 					cat >> /etc/monit/monitrc << EOF
-set alert $EMAILRECIPIENT
+set alert $MONITRECIPIENT
 set mail-format {
 	from: monit@\$HOST
 	subject: \$SERVICE \$EVENT at \$DATE
