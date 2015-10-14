@@ -163,17 +163,18 @@ check system \$HOST
     if cpu(user) is greater than 800% for 5 cycles then alert
     if cpu(wait) is greater than 800% for 5 cycles then alert
 
-check process nginx with pidfile /var/run/nginx.pid
-	start program = "/etc/init.d/nginx start"
-	stop program  = "/etc/init.d/nginx stop"
-	group www-data
-
 check process syslogd with pidfile /var/run/rsyslogd.pid
 	start program = "/etc/init.d/rsyslog start"
 	stop program = "/etc/init.d/rsyslog stop"
 
 check file syslogd_file with path /var/log/syslog
 	if timestamp > 65 minutes then alert # Have you seen "-- MARK --"?
+
+check process mysql with pidfile /var/run/mysqld/mysqld.pid
+	group database
+	start program = "/etc/init.d/mysql start"
+	stop program = "/etc/init.d/mysql stop"
+	if failed host 127.0.0.1 port 3306 protocol mysql then alert
 
 check process postfix with pidfile /var/spool/postfix/pid/master.pid
 	group mail
