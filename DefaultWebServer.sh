@@ -502,6 +502,7 @@ EOF
 					echo "yes" > /etc/pure-ftpd/conf/CreateHomeDir
 					echo "yes" > /etc/pure-ftpd/ChrootEveryone
 					echo "yes" > /etc/pure-ftpd/conf/DontResolve
+					echo "32" > /etc/pure-ftpd/conf/MinUID
 
 					cat > /etc/pure-ftpd/db/mysql.conf << EOF
 					
