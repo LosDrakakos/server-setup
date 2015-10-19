@@ -45,7 +45,6 @@ php5-imagick
 php5-gd
 php5-mcrypt
 php5-mysql
-apg
 monit
 pure-ftpd-mysql
 EOF
