@@ -119,8 +119,8 @@ echo "postfix postfix/mailname string $hostn" | debconf-set-selections
 apt-get install rkhunter openssl postfix -y -q
 
 #Mysql Passwd gen
-openssl rand -base64 12 | sed s/=// >"$dir/mysqlpasswd"
-mysqlpasswd=`cat $dir/mysqlpasswd`
+openssl rand -base64 12 | sed s/=// > $dir/mysqlpasswd
+mysqlpasswd=$(cat $dir/mysqlpasswd)
 echo "mysql-server mysql-server/root_password password $mysqlpasswd" | debconf-set-selections
 echo "mysql-server mysql-server/root_password_again password $mysqlpasswd" | debconf-set-selections
 
@@ -258,3 +258,4 @@ echo 'Fin du script sans erreurs \o/' >> /var/log/PostInstall.log
 	rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list
 	export DEBIAN_FRONTEND=dialog
 	exit 0
+fi
