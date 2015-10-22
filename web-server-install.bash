@@ -11,7 +11,6 @@ export DEBIAN_FRONTEND=noninteractive
 		echo "Script must be launched as root: # sudo $0" 1>&2
 		exit 1
 	fi
-#test
 ##########################
 #----- DECLARATIONS -----#
 ##########################
@@ -28,6 +27,8 @@ export DEBIAN_FRONTEND=noninteractive
 	MONITUSER="mmonituser" #Distant M/Monit User
 	MONITPASSWORD="mmonitpasswd" #Distant M/Monit User Password
 	SSH_PORT="22" #SSH Listening port, 22 is default, I recommend to change it
+	PRESTASHOPFQDN="prestashop.example.com" #The FQDN pointing to your web site (be sure to setup your ZoneDNS accordingly)
+	PRESTADIR="/home/www/prestashop/www" # Absolute Path for your prestashop webdir
 
 #GET du Utilities depuis le NAS (Don't mind this comment)
 #Si pas de NAS (Don't mind this comment)
@@ -84,17 +85,16 @@ EOF
 	echo "subject : $hostn Postinstall Report" > $dir/mail
 
 #Replacing Hostname you'll need to reboot at the end of the script
-	hostname=$(cat /etc/hostname)
-	sed -i "s/$hostname/$hostn/g" /etc/hosts
-	sed -i "s/$hostname/$hostn/g" /etc/hostname
+		sed -i "s/$HOSTNAME/$hostn/g" /etc/hosts
+	sed -i "s/$HOSTNAME/$hostn/g" /etc/hostname
 
 #Logging Errors
-	if [ -s /var/log/PostInstall.log ]
+	if [ -s /var/log/postinstall.log ]
 		then
-		rm /var/log/PostInstall.log
+		rm /var/log/postinstall.log
 		echo "$(tput setaf 1) ATTENTION LE SCRIPT AVAIT DEJA ETE LANCE$(tput sgr0)"
 	fi
-	exec 2>>/var/log/PostInstall.log
+	exec 2>>/var/log/postinstall.log
 
 # SSH Key ADD
 	mkdir -p /root/.ssh/
@@ -133,7 +133,7 @@ EOF
 	mkdir -p /usr/share/xt_geoip/
 	cp -r {BE,LE} /usr/share/xt_geoip/
 	cd $dir
-	exec 2>>/var/log/PostInstall.log #Back to normal Log
+	exec 2>>/var/log/postinstall.log #Back to normal Log
 	#Whitelist
 	iptables -F
 	iptables -t filter -P OUTPUT DROP
@@ -164,8 +164,8 @@ EOF
 
 for ipok in $(cat $WHITE)
 	do
-	iptables -A INPUT -s $ipok -j ACCEPT
-	iptables -A OUTPUT -d $ipok -j ACCEPT
+	iptables -A INPUT -s "$ipok" -j ACCEPT
+	iptables -A OUTPUT -d "$ipok" -j ACCEPT
 done
 
 	iptables-save > /root/iptablesbkp
@@ -189,8 +189,8 @@ done
 			if [ "$paquet" = "mysql-server" ]
 			then
 					#Mysql Passwd gen
-					openssl rand -base64 12 | sed s/=// >"$dir/mysqlpasswd"
-					mysqlpasswd=`cat $dir/mysqlpasswd`
+					openssl rand -base64 12 | sed 's/\/=//g' > $dir/mysqlpasswd
+					mysqlpasswd=$(cat "$dir/mysqlpasswd")
 					echo "mysql-server mysql-server/root_password password $mysqlpasswd" | debconf-set-selections
 					echo "mysql-server mysql-server/root_password_again password $mysqlpasswd" | debconf-set-selections
 					#Install
@@ -199,6 +199,182 @@ done
 				echo "Mysql user : root"  >> $dir/mail
 				echo "Mysql root Password : $mysqlpasswd"  >> $dir/mail
 				echo ""  >> $dir/mail
+			#----------------------------------#
+			#------------prestashop------------#
+			#----------------------------------#
+			elif [ "$paquet" = "prestashop1.6" ]
+			then
+			webserver=false
+				for server in $(cat $UTILS)
+				do
+					#If webserver nginx
+					if [ "$server" = "nginx" ]
+						then
+						webserver=true
+						apt-get install zip -q -y
+
+						mkdir -p $PRESTADIR
+						cd $PRESTADIR
+						wget -q https://www.prestashop.com/download/old/prestashop_1.6.1.0.zip
+						unzip -q prestashop*.zip
+						mv prestashop/* ./
+						cd $dir
+						chown 33:33 -R $PRESTADIR
+						chmod 755 -R $PRESTADIR
+						# Prestashop mysql user creation
+						openssl rand -base64 12 > $dir/prestapasswd
+						prestapasswd=$(cat $dir/prestapasswd)
+
+						cat > $dir/createdbpresta.sql << EOF
+
+#Creating Database for pure-ftpd-mysql
+#With user 'pureftpd', the password is randomly generated
+CREATE DATABASE prestashop;
+CREATE USER 'prestashop'@'localhost' IDENTIFIED BY '$prestapasswd';
+GRANT all ON prestashop.* TO 'prestashop'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+
+						mysql -u root -p$mysqlpasswd < $dir/createdbpresta.sql
+						echo "Mysql user for Prestashop : prestashop" >> $dir/mail
+						echo "Mysql Password for Prestashop : $prestapasswd"  >> $dir/mail
+						echo "" >> $dir/mail
+
+cat >> /etc/nginx/sites-available/$PRESTASHOPFQDN.serverblock << EOF
+server {
+	server_name $PRESTASHOPFQDN;
+	root $PRESTADIR;
+	index index.php;
+	listen 0.0.0.0:80;
+
+ 	fastcgi_param  PHP_ADMIN_VALUE "open_basedir=$PRESTADIR";
+	access_log /var/log/80-access-stand-prive.com combined;
+	error_log /var/log/80-error-stand-prive.com warn;
+	log_not_found off;
+	expires max;
+	if_modified_since before;
+	client_body_buffer_size 1M;
+	client_header_buffer_size 1M;
+	client_max_body_size 3M;
+	large_client_header_buffers 1 2M;
+	client_body_timeout 10;
+	client_header_timeout 10;
+	keepalive_timeout 15;
+	send_timeout 5;
+	fastcgi_buffers 256 256k;
+	fastcgi_buffer_size 512k;
+
+	location = /robots.txt  { access_log off; log_not_found off; expires 30d; }
+	location = /favicon.ico { access_log off; log_not_found off; expires 30d; }
+	location / {
+		rewrite ^/api/?(.*)$ /webservice/dispatcher.php?url=\$1 last;
+		rewrite ^/([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$1\$2.jpg last;
+		rewrite ^/([0-9])([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$2/\$1\$2\$3.jpg last;
+		rewrite ^/([0-9])([0-9])([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$2/\$3/\$1\$2\$3\$4.jpg last;
+		rewrite ^/([0-9])([0-9])([0-9])([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$2/\$3/\$4/\$1\$2\$3\$4\$5.jpg last;
+		rewrite ^/([0-9])([0-9])([0-9])([0-9])([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$2/\$3/\$4/\$5/\$1\$2\$3\$4\$5\$6.jpg last;
+		rewrite ^/([0-9])([0-9])([0-9])([0-9])([0-9])([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$2/\$3/\$4/\$5/\$6/\$1\$2\$3\$4\$5\$6\$7.jpg last;
+		rewrite ^/([0-9])([0-9])([0-9])([0-9])([0-9])([0-9])([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$2/\$3/\$4/\$5/\$6/\$7/\$1\$2\$3\$4\$5\$6\$7\$8.jpg last;
+		rewrite ^/([0-9])([0-9])([0-9])([0-9])([0-9])([0-9])([0-9])([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$2/\$3/\$4/\$5/\$6/\$7/\$8/\$1\$2\$3\$4\$5\$6\$7\$8\$9.jpg last;
+		rewrite ^/c/([0-9]+)(-[_a-zA-Z0-9-]*)(-[0-9]+)?/.+\\.jpg$ /img/c/\$1\$2.jpg last;
+		rewrite ^/c/([a-zA-Z-]+)(-[0-9]+)?/.+\\.jpg$ /img/c/\$1.jpg last;
+		rewrite ^/([0-9]+)(-[_a-zA-Z0-9-]*)(-[0-9]+)?/.+\\.jpg$ /img/c/\$1\$2.jpg last;
+		try_files \$uri \$uri/ /index.php?\$args;
+	}
+	location ~ \\.php$ {
+		fastcgi_pass unix:/var/run/php5-fpm.sock;
+		fastcgi_split_path_info ^(.+\\.php)(/.\*)$;
+		include /etc/nginx/fastcgi_params;
+	}
+	location ~ /\\. {
+		deny  all;
+		access_log  off;
+		log_not_found  off;
+	}
+
+}
+server {
+	server_name $PRESTASHOPFQDN;
+	root $PRESTADIR;
+	index index.php;
+	listen 0.0.0.0:443;
+#	ssl    on;
+#	ssl_certificate PATH_TO_CRT;
+#	ssl_certificate_key PATH_TO_key;
+#	ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:ECDHE-RSA-AES128-GCM-SHA256:AES256+EECDH:DHE-RSA-AES128-GCM-SHA256:AES256+EDH:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA:ECDHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES256-GCM-SHA384:AES128-GCM-SHA256:AES256-SHA256:AES128-SHA256:AES256-SHA:AES128-SHA:DES-CBC3-SHA:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!MD5:!PSK:!RC4";
+#	ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+#	ssl_prefer_server_ciphers on;
+#	ssl_session_cache shared:SSL:10m;
+
+ 	fastcgi_param  PHP_ADMIN_VALUE "open_basedir=$PRESTADIR";
+	access_log /var/log/443-access-stand-prive.com combined;
+	error_log /var/log/443-error-stand-prive.com warn;
+	log_not_found off;
+	expires max;
+	if_modified_since before;
+	client_body_buffer_size 1M;
+	client_header_buffer_size 1M;
+	client_max_body_size 3M;
+	large_client_header_buffers 1 2M;
+	client_body_timeout 10;
+	client_header_timeout 10;
+	keepalive_timeout 15;
+	send_timeout 5;
+	fastcgi_buffers 256 256k;
+	fastcgi_buffer_size 512k;
+
+	location = /robots.txt  { access_log off; log_not_found off; expires 30d; }
+	location = /favicon.ico { access_log off; log_not_found off; expires 30d; }
+	location / {
+		rewrite ^/api/?(.*)$ /webservice/dispatcher.php?url=\$1 last;
+		rewrite ^/([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$1\$2.jpg last;
+		rewrite ^/([0-9])([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$2/\$1\$2\$3.jpg last;
+		rewrite ^/([0-9])([0-9])([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$2/\$3/\$1\$2\$3\$4.jpg last;
+		rewrite ^/([0-9])([0-9])([0-9])([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$2/\$3/\$4/\$1\$2\$3\$4\$5.jpg last;
+		rewrite ^/([0-9])([0-9])([0-9])([0-9])([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$2/\$3/\$4/\$5/\$1\$2\$3\$4\$5\$6.jpg last;
+		rewrite ^/([0-9])([0-9])([0-9])([0-9])([0-9])([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$2/\$3/\$4/\$5/\$6/\$1\$2\$3\$4\$5\$6\$7.jpg last;
+		rewrite ^/([0-9])([0-9])([0-9])([0-9])([0-9])([0-9])([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$2/\$3/\$4/\$5/\$6/\$7/\$1\$2\$3\$4\$5\$6\$7\$8.jpg last;
+		rewrite ^/([0-9])([0-9])([0-9])([0-9])([0-9])([0-9])([0-9])([0-9])(-[_a-zA-Z0-9-]*)?(-[0-9]+)?/.+\\.jpg$ /img/p/\$1/\$2/\$3/\$4/\$5/\$6/\$7/\$8/\$1\$2\$3\$4\$5\$6\$7\$8\$9.jpg last;
+		rewrite ^/c/([0-9]+)(-[_a-zA-Z0-9-]*)(-[0-9]+)?/.+\\.jpg$ /img/c/\$1\$2.jpg last;
+		rewrite ^/c/([a-zA-Z-]+)(-[0-9]+)?/.+\\.jpg$ /img/c/\$1.jpg last;
+		rewrite ^/([0-9]+)(-[_a-zA-Z0-9-]*)(-[0-9]+)?/.+\\.jpg$ /img/c/\$1\$2.jpg last;
+		try_files \$uri \$uri/ /index.php?\$args;
+	}
+	location ~ \\.php$ {
+		fastcgi_pass unix:/var/run/php5-fpm.sock;
+		fastcgi_split_path_info ^(.+\\.php)(/.\*)$;
+		include /etc/nginx/fastcgi_params;
+	}
+	location ~ /\\. {
+		deny  all;
+		access_log  off;
+		log_not_found  off;
+	}
+
+}
+
+EOF
+							ln -s /etc/nginx/sites-available/$PRESTASHOPFQDN.serverblock /etc/nginx/sites-enabled/$PRESTASHOPFQDN.serverblock
+							rm /etc/nginx/sites-enabled/default
+
+							service nginx restart
+
+						elif [ "$server" = "apache" ]
+						then
+							echo "APACHE VHOST not supported yet" >> $dir/mail
+							webserver=true
+						fi
+
+				done
+
+				if [ "$webserver" = "false" ]
+					then
+					echo "Please Install a webserver in order to install Prestashop" >> $dir/mail
+					echo "" >> $dir/mail
+				fi
+			#----------------------------------#
+			#--------fin-prestashop------------#
+			#----------------------------------#
 			else
 				#installation du paquet
 				apt-get install $paquet -y -q
@@ -206,7 +382,7 @@ done
 		done
 	echo "" >> $dir/mail
 #Paquets SetUp
-	for paquet in $(cat $UTILS)
+	for paquet in $(cat "$UTILS")
 		do
 			case "$paquet" in
 
@@ -481,8 +657,8 @@ service monit restart
 
 					# Pureftpd-mysql Setup
 
-					openssl rand -base64 12 | sed s/=// > $dir/pureftpdpasswd
-					ftpdpasswd=`cat $dir/pureftpdpasswd`
+					openssl rand -base64 12 > $dir/pureftpdpasswd
+					ftpdpasswd=$(cat $dir/pureftpdpasswd)
 
 					cat > $dir/createdb.sql << EOF
 
@@ -491,12 +667,11 @@ service monit restart
 CREATE DATABASE pureftpd;
 USE pureftpd;
 CREATE TABLE ftpd ( User varchar(16) NOT NULL default '', status enum('0','1') NOT NULL default '0', Password varchar(64) NOT NULL default '', Uid varchar(11) NOT NULL default '-1', Gid varchar(11) NOT NULL default '-1', Dir varchar(128) NOT NULL default '', ULBandwidth smallint(5) NOT NULL default '0', DLBandwidth smallint(5) NOT NULL default '0', comment tinytext NOT NULL, ipaccess varchar(15) NOT NULL default '*', QuotaSize smallint(5) NOT NULL default '0', QuotaFiles int(11) NOT NULL default 0, PRIMARY KEY (User), UNIQUE KEY User (User));
-CREATE USER 'pureftpd'@'localhost' IDENTIFIED BY 'tototo';
+CREATE USER 'pureftpd'@'localhost' IDENTIFIED BY '$ftpdpasswd';
 GRANT all ON pureftpd.* TO 'pureftpd'@'localhost';
 FLUSH PRIVILEGES;
 EOF
 
-					sed -i "s/tototo/$ftpdpasswd/g" $dir/createdb.sql
 					mysql -u root -p$mysqlpasswd < $dir/createdb.sql
 
 					echo "yes" > /etc/pure-ftpd/conf/NoAnonymous
@@ -539,13 +714,13 @@ EOF
 				for ftpuser in $(cat $USERSFTP)
 					do
 
-					user=`echo "$ftpuser" | cut -d ":" -f1`
-					userdir=`echo "$ftpuser" | cut -d ":" -f2`
-					userpasswd=`echo "$ftpuser" | cut -d ":" -f3`
+					user=$(echo "$ftpuser" | cut -d ":" -f1)
+					userdir=$(echo "$ftpuser" | cut -d ":" -f2)
+					userpasswd=$(echo "$ftpuser" | cut -d ":" -f3)
 					if [ "$userpasswd" == "random" ]
 						then
-						openssl rand -base64 12 | sed s/=// > "$dir/userpasswd"
-						userpasswd=`cat $dir/userpasswd`
+						openssl rand -base64 12 > $dir/userpasswd
+						userpasswd=$(cat $dir/userpasswd)
 					fi
 					bash insertftpduser.bash $user $userdir $userpasswd
 					echo "Pureftpd user : $user" >> $dir/mail
@@ -602,18 +777,19 @@ EOF
 	apt-get clean -q
 
 	ifconfig >> $dir/mail
-
-	if [ -s /var/log/PostInstall.log ]
+	#Deleting parasite lines from the error log
+	sed -i '/Extracting templates from packages: [0-9]+*/d' /var/log/postinstall.log
+	if [ -s /var/log/postinstall.log ]
 	then
-		cat /var/log/PostInstall.log
-		cat /var/log/PostInstall.log  >> $dir/mail
+		cat /var/log/postinstall.log
+		cat /var/log/postinstall.log  >> $dir/mail
 		sendmail $EMAILRECIPIENT < $dir/mail
 		rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list
 		export DEBIAN_FRONTEND=dialog
 		exit 1
 	else
-		echo 'Fin du script sans erreurs \o/' >> /var/log/PostInstall.log
-		cat /var/log/PostInstall.log  >> $dir/mail
+		echo 'Fin du script sans erreurs \o/' >> /var/log/postinstall.log
+		cat /var/log/postinstall.log  >> $dir/mail
 		sendmail $EMAILRECIPIENT < $dir/mail
 		rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list
 		export DEBIAN_FRONTEND=dialog

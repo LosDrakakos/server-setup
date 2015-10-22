@@ -31,6 +31,7 @@ It's possible to add :
 - SSH Keys
 - Email for reporting
 - Monitoring via MMonit
+
 #### In progress
 
 - Prestashop auto install (added as a package)
