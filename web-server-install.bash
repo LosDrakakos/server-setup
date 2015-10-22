@@ -14,7 +14,7 @@ export DEBIAN_FRONTEND=noninteractive
 ##########################
 #----- DECLARATIONS -----#
 ##########################
-
+	branch="master" #Git branch to use. Please don't modify unless you know what you are doing
 	dir="$PWD"	#Please don't modify unless you know what you are doing
 	UTILS="$dir/utilities.list"	#Please don't modify unless you know what you are doing
 	WHITE="$dir/white.list"	#Please don't modify unless you know what you are doing
@@ -705,7 +705,7 @@ EOF
 
 					/etc/init.d/pure-ftpd-mysql restart
 
-				wget -q https://raw.githubusercontent.com/Cthulhuely/PostInstallScript/master/insertftpduser.bash #Get ftp users creation script from my github
+				wget -q https://raw.githubusercontent.com/cthulhuely/server-setup/$branch/scripts/insertftpduser.bash #Get ftp users creation script from my github
 				#Pour l'infra distribuée Get depuis le NAS (Don't Mind this comment)
 
 				echo "Mysql user for Pureftpd : pureftpd" >> $dir/mail
