@@ -68,18 +68,18 @@ echo -e "$CLEF_SSH" >> /root/.ssh/authorized_keys
 #Sometimes there's issues with Digital Oceans Repo
 #Fell free to uncomment to use thoose instead (or just use any other repo you want
 #cat > /etc/apt/sources.list << EOF
-#deb http://fr.archive.ubuntu.com/ubuntu/ trusty main restricted universe multiverse 
-#deb http://fr.archive.ubuntu.com/ubuntu/ trusty-security main restricted universe multiverse 
-#deb http://fr.archive.ubuntu.com/ubuntu/ trusty-updates main restricted universe multiverse 
+#deb http://fr.archive.ubuntu.com/ubuntu/ trusty main restricted universe multiverse
+#deb http://fr.archive.ubuntu.com/ubuntu/ trusty-security main restricted universe multiverse
+#deb http://fr.archive.ubuntu.com/ubuntu/ trusty-updates main restricted universe multiverse
 #EOF
 
 apt-get update -y -q
 
-# Upgrade  
+# Upgrade
 apt-get upgrade -y -q
 
 # Firewall Whitelist
-	
+
 apt-get install iptables
 
 #Whitelist
@@ -117,7 +117,7 @@ echo "/sbin/iptables-restore < /root/iptablesbkp" >> /etc/rc.local
 echo "postfix postfix/main_mailer_type select Internet Site" | debconf-set-selections # Postfix Preinstall setup
 echo "postfix postfix/mailname string $hostn" | debconf-set-selections
 apt-get install rkhunter openssl postfix -y -q
-	
+
 #Mysql Passwd gen
 openssl rand -base64 12 | sed s/=// >"$dir/mysqlpasswd"
 mysqlpasswd=`cat $dir/mysqlpasswd`
@@ -140,7 +140,7 @@ set mail-format {
 	Yours sincerely,
 	monit
 	}
-set daemon 60           
+set daemon 60
 set logfile /var/log/monit.log
 set idfile /var/lib/monit/id
 set eventqueue
@@ -155,7 +155,7 @@ include /etc/monit/conf.d/*
 check system \$HOST
 	if loadavg (5min) > 8 then alert
 	if loadavg (15min) > 6 then alert
-	if memory usage > 80% for 4 cycles then alert	
+	if memory usage > 80% for 4 cycles then alert
 	if cpu(system) is greater than 400% for 5 cycles then alert
 	if cpu(user) is greater than 400% for 5 cycles then alert
 	if cpu(wait) is greater than 400% for 5 cycles then alert
@@ -200,7 +200,7 @@ chmod 700 /etc/monit/monitrc
 service monit restart
 
 #SSH Setup
-	rm /etc/ssh/sshd_config 
+	rm /etc/ssh/sshd_config
 	cat >> /etc/ssh/sshd_config  << EOF
 		Port $SSH_PORT
 		Protocol 2
@@ -233,9 +233,9 @@ service monit restart
 		AcceptEnv LANG LC_*
 		Subsystem sftp /usr/lib/openssh/sftp-server
 		UsePAM yes
-		
+
 EOF
-					
+
 	service ssh restart
 
 #System Cleaning
@@ -245,7 +245,7 @@ apt-get clean -q
 ifconfig >> $dir/mail
 if [ -s /var/log/PostInstall.log ]
 then
-	cat /var/log/PostInstall.log 
+	cat /var/log/PostInstall.log
 	cat /var/log/PostInstall.log  >> $dir/mail
 	sendmail $EMAILRECIPIENT < $dir/mail
 	rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list
