@@ -11,6 +11,7 @@ export DEBIAN_FRONTEND=noninteractive
 		echo "Script must be launched as root: # sudo $0" 1>&2
 		exit 1
 	fi
+#test
 ##########################
 #----- DECLARATIONS -----#
 ##########################
@@ -106,30 +107,30 @@ EOF
 #Sometimes there's issues with Digital Oceans Repo
 #Fell free to uncomment to use thoose instead (or just use any other repo you want
 #cat > /etc/apt/sources.list << EOF
-#deb http://fr.archive.ubuntu.com/ubuntu/ trusty main restricted universe multiverse 
-#deb http://fr.archive.ubuntu.com/ubuntu/ trusty-security main restricted universe multiverse 
-#deb http://fr.archive.ubuntu.com/ubuntu/ trusty-updates main restricted universe multiverse 
+#deb http://fr.archive.ubuntu.com/ubuntu/ trusty main restricted universe multiverse
+#deb http://fr.archive.ubuntu.com/ubuntu/ trusty-security main restricted universe multiverse
+#deb http://fr.archive.ubuntu.com/ubuntu/ trusty-updates main restricted universe multiverse
 #EOF
 
 	apt-get update -y
 
-# Upgrade  
+# Upgrade
 	apt-get upgrade -y
 
 # Firewall Whitelist
-	
+
 	#Install GEOIP
 	exec 2>>/var/log/Build.log #Special Error Log for xtable If any error while enabling Iptable GEOIP rules, check this log.
 	apt-get install iptables iptables-dev module-assistant xtables-addons-common libtext-csv-xs-perl unzip build-essential -y -q
 	module-assistant auto-install xtables-addons -i -q -n
 
-	cd /usr/lib/xtables-addons/  
+	cd /usr/lib/xtables-addons/
 	sed -i "s/wget/wget -q/g" /usr/lib/xtables-addons/xt_geoip_dl
 	sed -i "s/unzip/unzip -q/g" /usr/lib/xtables-addons/xt_geoip_dl
 	sed -i "s/gzip/gzip -q/g" /usr/lib/xtables-addons/xt_geoip_dl
 	./xt_geoip_dl
 	./xt_geoip_build GeoIPCountryWhois.csv
-	mkdir -p /usr/share/xt_geoip/  
+	mkdir -p /usr/share/xt_geoip/
 	cp -r {BE,LE} /usr/share/xt_geoip/
 	cd $dir
 	exec 2>>/var/log/PostInstall.log #Back to normal Log
@@ -137,7 +138,7 @@ EOF
 	iptables -F
 	iptables -t filter -P OUTPUT DROP
 	iptables -t filter -P INPUT DROP
-	
+
 	iptables -t filter -A INPUT -i lo -j ACCEPT
 	iptables -t filter -A OUTPUT -o lo -j ACCEPT
 	iptables -t filter -A OUTPUT -p tcp --dport 21 -j ACCEPT
@@ -155,10 +156,10 @@ EOF
 
 	iptables -A INPUT -i eth0 -p icmp -j ACCEPT
 
-			
+
 	iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
 	iptables -A OUTPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
-	
+
 	iptables -A INPUT -m geoip --source-country RU,CN,UA,TW,TR,SK,RO,PL,CZ,BG  -j DROP #Blocking potential botnet zone (No offense intended if you live here, but it's my client policy...)
 
 for ipok in $(cat $WHITE)
@@ -168,7 +169,7 @@ for ipok in $(cat $WHITE)
 done
 
 	iptables-save > /root/iptablesbkp
-	
+
 	echo "/sbin/iptables-restore < /root/iptablesbkp" >> /etc/rc.local
 
 #Paquets installation
@@ -182,9 +183,9 @@ done
 		for paquet in $(cat $UTILS)
 		do
 			echo "$paquet" >> $dir/mail
-						
+
 			#MYSQL PreInstall & Install
-			
+
 			if [ "$paquet" = "mysql-server" ]
 			then
 					#Mysql Passwd gen
@@ -195,20 +196,20 @@ done
 					#Install
 					apt-get install mysql-server -y -q
 
-				echo "Mysql user : root"  >> $dir/mail 
+				echo "Mysql user : root"  >> $dir/mail
 				echo "Mysql root Password : $mysqlpasswd"  >> $dir/mail
 				echo ""  >> $dir/mail
 			else
 				#installation du paquet
 				apt-get install $paquet -y -q
-			fi 
+			fi
 		done
 	echo "" >> $dir/mail
 #Paquets SetUp
 	for paquet in $(cat $UTILS)
 		do
 			case "$paquet" in
-				
+
 				"php5-fpm")
 
 
@@ -338,13 +339,13 @@ opcache.validate_timestamps=1
 opcache.revalidate_freq=60
 opcache.save_comments=0
 opcache.load_comments=0
-opcache.fast_shutdown=1 
-						
+opcache.fast_shutdown=1
+
 EOF
-					
+
 service php5-fpm restart
 
-					;;			
+					;;
 
 			"nginx")
 
@@ -354,12 +355,12 @@ cat >> /etc/nginx/nginx.conf << EOF
 	user www-data;
 	worker_processes 4;
 	pid /run/nginx.pid;
-	
+
 	events {
 		worker_connections 768;
 	}
 	http {
-	
+
 		sendfile on;
 		tcp_nopush on;
 		tcp_nodelay on;
@@ -375,7 +376,7 @@ cat >> /etc/nginx/nginx.conf << EOF
 		include /etc/nginx/conf.d/*.conf;
 		include /etc/nginx/sites-enabled/*;
 	}
-	
+
 EOF
 				cat >> serverblock.example << EOF
 
@@ -384,7 +385,7 @@ server {
     root /example/directory/;
     index index.html index.php;
 
-    location ~ \\.php$ 
+    location ~ \\.php$
     {
         fastcgi_pass unix:/var/run/php5-fpm.sock;
         fastcgi_split_path_info ^(.+\\.php)(/.*)$;
@@ -413,7 +414,7 @@ set mail-format {
 	Yours sincerely,
 	monit
 	}
-set daemon 60           
+set daemon 60
 set logfile /var/log/monit.log
 set idfile /var/lib/monit/id
 set eventqueue
@@ -428,7 +429,7 @@ include /etc/monit/conf.d/*
 check system \$HOST
 	if loadavg (5min) > 8 then alert
 	if loadavg (15min) > 6 then alert
-	if memory usage > 80% for 4 cycles then alert	
+	if memory usage > 80% for 4 cycles then alert
 	if cpu(system) is greater than 400% for 5 cycles then alert
 	if cpu(user) is greater than 400% for 5 cycles then alert
 	if cpu(wait) is greater than 400% for 5 cycles then alert
@@ -461,7 +462,7 @@ check file postfix_rc with path /etc/init.d/postfix
 	if failed permission 755 then unmonitor
 	if failed uid root then unmonitor
 	if failed gid root then unmonitor
-	
+
 check process mysql with pidfile /var/run/mysqld/mysqld.pid
 	group database
 	start program = "/etc/init.d/mysql start"
@@ -477,11 +478,11 @@ chmod 700 /etc/monit/monitrc
 service monit restart
 			;;
 				"pure-ftpd-mysql")
-				
+
 					# Pureftpd-mysql Setup
 
 					openssl rand -base64 12 | sed s/=// > $dir/pureftpdpasswd
-					ftpdpasswd=`cat $dir/pureftpdpasswd` 
+					ftpdpasswd=`cat $dir/pureftpdpasswd`
 
 					cat > $dir/createdb.sql << EOF
 
@@ -497,7 +498,7 @@ EOF
 
 					sed -i "s/tototo/$ftpdpasswd/g" $dir/createdb.sql
 					mysql -u root -p$mysqlpasswd < $dir/createdb.sql
-					
+
 					echo "yes" > /etc/pure-ftpd/conf/NoAnonymous
 					echo "/etc/pure-ftpd/db/mysql.conf" > /etc/pure-ftpd/conf/MySQLConfigFile
 					echo "yes" > /etc/pure-ftpd/conf/CreateHomeDir
@@ -509,7 +510,7 @@ EOF
 					echo "yes" > /etc/pure-ftpd/conf/VerboseLog
 
 					cat > /etc/pure-ftpd/db/mysql.conf << EOF
-					
+
 MYSQLSocket      /var/run/mysqld/mysqld.sock
 MYSQLServer     localhost
 MYSQLPort       3306
@@ -526,13 +527,13 @@ MySQLGetBandwidthDL SELECT DLBandwidth FROM ftpd WHERE User=\"\\L\"AND status=\"
 MySQLGetQTASZ   SELECT QuotaSize FROM ftpd WHERE User=\"\\L\"AND status=\"1\" AND (ipaccess = \"*\" OR ipaccess LIKE \"\\R\")
 MySQLGetQTAFS   SELECT QuotaFiles FROM ftpd WHERE User=\"\\L\"AND status=\"1\" AND (ipaccess = \"*\" OR ipaccess LIKE \"\\R\")
 EOF
-					
+
 					/etc/init.d/pure-ftpd-mysql restart
 
 				wget -q https://raw.githubusercontent.com/Cthulhuely/PostInstallScript/master/insertftpduser.bash #Get ftp users creation script from my github
 				#Pour l'infra distribuée Get depuis le NAS (Don't Mind this comment)
 
-				echo "Mysql user for Pureftpd : pureftpd" >> $dir/mail 
+				echo "Mysql user for Pureftpd : pureftpd" >> $dir/mail
 				echo "Mysql Password for Pureftpd : $ftpdpasswd"  >> $dir/mail
 				#Creating FTP Users Defined in Declarations
 				for ftpuser in $(cat $USERSFTP)
@@ -547,18 +548,18 @@ EOF
 						userpasswd=`cat $dir/userpasswd`
 					fi
 					bash insertftpduser.bash $user $userdir $userpasswd
-					echo "Pureftpd user : $user" >> $dir/mail 
+					echo "Pureftpd user : $user" >> $dir/mail
 					echo "$user homedir : $userdir" >> $dir/mail
-					echo "$user ftp password : $userpasswd" >> $dir/mail 
+					echo "$user ftp password : $userpasswd" >> $dir/mail
 					echo "" >> $dir/mail
 				done
 				;;
 
-			esac				
+			esac
 
 		done
 #SSH Setup
-	rm /etc/ssh/sshd_config 
+	rm /etc/ssh/sshd_config
 	cat >> /etc/ssh/sshd_config  << EOF
 		Port $SSH_PORT
 		Protocol 2
@@ -591,20 +592,20 @@ EOF
 		AcceptEnv LANG LC_*
 		Subsystem sftp /usr/lib/openssh/sftp-server
 		UsePAM yes
-		
+
 EOF
-					
+
 	service ssh restart
 
 #System Cleaning
 	apt-get autoremove -y -q
 	apt-get clean -q
-	
+
 	ifconfig >> $dir/mail
 
 	if [ -s /var/log/PostInstall.log ]
 	then
-		cat /var/log/PostInstall.log 
+		cat /var/log/PostInstall.log
 		cat /var/log/PostInstall.log  >> $dir/mail
 		sendmail $EMAILRECIPIENT < $dir/mail
 		rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list

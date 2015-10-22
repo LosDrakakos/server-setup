@@ -11,7 +11,6 @@ if [ "$(id -u)" != "0" ]; then
 	echo "Script must be launched as root: # sudo $0" 1>&2
 	exit 1
 fi
-fsfsf
 ##########################
 #----- DECLARATIONS -----#
 ##########################
