@@ -119,7 +119,7 @@ echo "postfix postfix/mailname string $hostn" | debconf-set-selections
 apt-get install rkhunter openssl postfix -y -q
 
 #Mysql Passwd gen
-openssl rand -base64 12 | sed s/=// > $dir/mysqlpasswd
+openssl rand -base64 12 > $dir/mysqlpasswd
 mysqlpasswd=$(cat $dir/mysqlpasswd)
 echo "mysql-server mysql-server/root_password password $mysqlpasswd" | debconf-set-selections
 echo "mysql-server mysql-server/root_password_again password $mysqlpasswd" | debconf-set-selections
