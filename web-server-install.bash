@@ -375,6 +375,9 @@ EOF
 			#----------------------------------#
 			#--------fin-prestashop------------#
 			#----------------------------------#
+			elif [ "$paquet" = "composer" ]
+				then
+					curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
 			else
 				#installation du paquet
 				apt-get install $paquet -y -q
@@ -704,30 +707,41 @@ MySQLGetQTAFS   SELECT QuotaFiles FROM ftpd WHERE User=\"\\L\"AND status=\"1\" A
 EOF
 
 					/etc/init.d/pure-ftpd-mysql restart
-
-				wget -q https://raw.githubusercontent.com/cthulhuely/server-setup/$branch/scripts/insertftpduser.bash #Get ftp users creation script from my github
-				#Pour l'infra distribuée Get depuis le NAS (Don't Mind this comment)
-
-				echo "Mysql user for Pureftpd : pureftpd" >> $dir/mail
-				echo "Mysql Password for Pureftpd : $ftpdpasswd"  >> $dir/mail
-				#Creating FTP Users Defined in Declarations
-				for ftpuser in $(cat $USERSFTP)
-					do
-
-					user=$(echo "$ftpuser" | cut -d ":" -f1)
-					userdir=$(echo "$ftpuser" | cut -d ":" -f2)
-					userpasswd=$(echo "$ftpuser" | cut -d ":" -f3)
-					if [ "$userpasswd" == "random" ]
+					if [ -s $dir/scripts/insertftpduser.bash ]
 						then
-						openssl rand -base64 12 > $dir/userpasswd
-						userpasswd=$(cat $dir/userpasswd)
+							cp $dir/scripts/insertftpduser.bash
+					elif [ -s $dir/insertftpduser.bash ]
+						then
+							mkdir -p $dir/scripts
+							mv $dir/insertftpduser.bash $dir/scripts/insertftpduser.bash
+					else
+						mkdir -p $dir/scripts
+						cd $dir/scripts
+						wget -q https://raw.githubusercontent.com/cthulhuely/server-install/$branch/scripts/insertftpduser.bash #Get ftp users creation script from my github
+						cd $dir
 					fi
-					bash insertftpduser.bash $user $userdir $userpasswd
-					echo "Pureftpd user : $user" >> $dir/mail
-					echo "$user homedir : $userdir" >> $dir/mail
-					echo "$user ftp password : $userpasswd" >> $dir/mail
-					echo "" >> $dir/mail
-				done
+
+
+					echo "Mysql user for Pureftpd : pureftpd" >> $dir/mail
+					echo "Mysql Password for Pureftpd : $ftpdpasswd"  >> $dir/mail
+					#Creating FTP Users Defined in Declarations
+					for ftpuser in $(cat $USERSFTP)
+						do
+
+						user=$(echo "$ftpuser" | cut -d ":" -f1)
+						userdir=$(echo "$ftpuser" | cut -d ":" -f2)
+						userpasswd=$(echo "$ftpuser" | cut -d ":" -f3)
+						if [ "$userpasswd" == "random" ]
+							then
+							openssl rand -base64 12 > $dir/userpasswd
+							userpasswd=$(cat $dir/userpasswd)
+						fi
+						bash $dir/scripts/insertftpduser.bash $user $userdir $userpasswd
+						echo "Pureftpd user : $user" >> $dir/mail
+						echo "$user homedir : $userdir" >> $dir/mail
+						echo "$user ftp password : $userpasswd" >> $dir/mail
+						echo "" >> $dir/mail
+					done
 				;;
 
 			esac
