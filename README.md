@@ -41,14 +41,14 @@ and
 
 ##### It is possible to set the following parameters :
 - Ip to whitelist (l. 61)
->IP you want to bypasss the firewall (please only use static IP you own, could be dangerous otherwise)
+ >IP you want to bypasss the firewall (please only use static IP you own, could be dangerous otherwise)
 
-  >IP Format is `X.X.X.X/XX`
+ >IP Format is `X.X.X.X/XX`
 
-  >If your home public IP is `123.123.123.123`
+ >If your home public IP is `123.123.123.123`
 
-  >Just type in `123.123.123.123/32` but wider range are supported ;)
->```shell
+ >Just type in `123.123.123.123/32` but wider range are supported ;)
+ >```shell
 cat >> $dir/white.list << EOF
 X.X.X.X.X/XX
 X.X.X.X.X/XX
@@ -83,7 +83,7 @@ CLEF_SSH='KEY1\nKEY2\KEY3'
  ```
 
 - Email for end of script report (l. 25)
-> This is mostly for password communication
+ > This is mostly for password communication
  > You can put as many adresses as you want, just separate them with `, ` like in the example below
  ```shell
  EMAILRECIPIENT='me@example.com, my_colleague@example.com, another_colleague@example.com'
