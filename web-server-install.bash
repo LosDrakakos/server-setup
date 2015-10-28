@@ -20,7 +20,7 @@ export DEBIAN_FRONTEND=noninteractive
 	WHITE="$dir/white.list"	#Please don't modify unless you know what you are doing
 	USERSFTP="$dir/usersftp.list" #Please don't modify unless you know what you are doing
 	hostn="srv.example.com"	#Server Hostname (Please use a FSQN and don't forget to setup your PTR)
-	ISVZ="False" # If the system is in container and does not have its own Kernel (Like OpenVZ)
+	ISVZ="False" # Set to 'True' if the system is in container and does not have its own Kernel (Like OpenVZ)
 	CLEF_SSH='KEY1\nKEY2\KEY3' 	#Separate Key with \n
 	EMAILRECIPIENT='me@example.com, my_colleague@example.com, another_colleague@example.com' #A mail will be sent to theese with the differents passwords generated Followed by the Error Log, there's no email adress limit
 	MONITRECIPIENT='me@example.com' #Address that will be directly alerted by monit (mmonit notif are independant) PLEASE ONLY USE ONE ADRESS HERE
@@ -40,6 +40,7 @@ export DEBIAN_FRONTEND=noninteractive
 #But feel free to add others
 #Please keep in mind that if you add your own packages
 #that prompts could show up, and you could need human intervention for the script to end
+# Package currently fully-supported : mysql-server, nginx, php5-fpm, php5-mcrypt, monit, pure-ftpd-mysql, laravel, prestashop1.6
 #Please Always put mysql-server first
 
 cat >> $dir/utilities.list << EOF
@@ -52,8 +53,6 @@ php5-mcrypt
 php5-mysql
 monit
 pure-ftpd-mysql
-laravel
-prestashop1.6
 EOF
 
 #Fin Si pas de NAS (Don't mind this comment)
