@@ -20,15 +20,18 @@ export DEBIAN_FRONTEND=noninteractive
 	WHITE="$dir/white.list"	#Please don't modify unless you know what you are doing
 	USERSFTP="$dir/usersftp.list" #Please don't modify unless you know what you are doing
 	hostn="srv.example.com"	#Server Hostname (Please use a FSQN and don't forget to setup your PTR)
+	ISVZ="False" # If the system is in container and does not have its own Kernel (Like OpenVZ)
 	CLEF_SSH='KEY1\nKEY2\KEY3' 	#Separate Key with \n
 	EMAILRECIPIENT='me@example.com, my_colleague@example.com, another_colleague@example.com' #A mail will be sent to theese with the differents passwords generated Followed by the Error Log, there's no email adress limit
 	MONITRECIPIENT='me@example.com' #Address that will be directly alerted by monit (mmonit notif are independant) PLEASE ONLY USE ONE ADRESS HERE
 	MONITSERVER="mmonit.example.com" #M/Monit Server FQDN or IP Address
 	MONITUSER="mmonituser" #Distant M/Monit User
 	MONITPASSWORD="mmonitpasswd" #Distant M/Monit User Password
-	SSH_PORT="22" #SSH Listening port, 22 is default, I recommend to change it
-	PRESTASHOPFQDN="prestashop.example.com" #The FQDN pointing to your web site (be sure to setup your ZoneDNS accordingly)
+	SSH_PORT="22" #SSH Listening port, 22 is default, I strongly recommend to change it
+	PRESTASHOPFQDN="prestashop.example.com" #The FQDN pointing to your web site (be sure to setup your ZoneDNS or HOSTS file accordingly)
 	PRESTADIR="/home/www/prestashop/www" # Absolute Path for your prestashop webdir
+	LARAVELFQDN="laravel.example.com" #The FQDN pointing to your web site (be sure to setup your ZoneDNS or HOSTS file accordingly)
+	LARAVELDIR="/home/www/laravel" # Absolute Path for your laravel clean install. As the web accessible file is $LARAVELDIR/public, i don't sense the nececity of adding an extra www folder, like for prestashop
 
 #GET du Utilities depuis le NAS (Don't mind this comment)
 #Si pas de NAS (Don't mind this comment)
@@ -49,6 +52,8 @@ php5-mcrypt
 php5-mysql
 monit
 pure-ftpd-mysql
+laravel
+prestashop1.6
 EOF
 
 #Fin Si pas de NAS (Don't mind this comment)
@@ -119,25 +124,18 @@ EOF
 
 # Firewall Whitelist
 
-	#Install GEOIP
-	exec 2>>/var/log/Build.log #Special Error Log for xtable If any error while enabling Iptable GEOIP rules, check this log.
-	apt-get install iptables iptables-dev module-assistant xtables-addons-common libtext-csv-xs-perl unzip build-essential -y -q
-	module-assistant auto-install xtables-addons -i -q -n
+	apt-get install iptables -y -q
 
-	cd /usr/lib/xtables-addons/
-	sed -i "s/wget/wget -q/g" /usr/lib/xtables-addons/xt_geoip_dl
-	sed -i "s/unzip/unzip -q/g" /usr/lib/xtables-addons/xt_geoip_dl
-	sed -i "s/gzip/gzip -q/g" /usr/lib/xtables-addons/xt_geoip_dl
-	./xt_geoip_dl
-	./xt_geoip_build GeoIPCountryWhois.csv
-	mkdir -p /usr/share/xt_geoip/
-	cp -r {BE,LE} /usr/share/xt_geoip/
-	cd $dir
-	exec 2>>/var/log/postinstall.log #Back to normal Log
 	#Whitelist
 	iptables -F
 	iptables -t filter -P OUTPUT DROP
 	iptables -t filter -P INPUT DROP
+
+	for ipok in $(cat $WHITE)
+		do
+		iptables -A INPUT -s "$ipok" -j ACCEPT
+		iptables -A OUTPUT -d "$ipok" -j ACCEPT
+	done
 
 	iptables -t filter -A INPUT -i lo -j ACCEPT
 	iptables -t filter -A OUTPUT -o lo -j ACCEPT
@@ -148,29 +146,39 @@ EOF
 	iptables -t filter -A OUTPUT -p udp --dport 53 -j ACCEPT
 	iptables -t filter -A OUTPUT -p udp --dport 123 -j ACCEPT
 	iptables -t filter -A OUTPUT -p tcp --dport 443 -j ACCEPT
-	iptables -t filter -A OUTPUT -p tcp --dport 2812 -j ACCEPT
+	#iptables -t filter -A OUTPUT -p tcp --dport 2812 -j ACCEPT #Commented until further notice
 	iptables -t filter -A INPUT -p tcp --dport 443 -j ACCEPT
 	iptables -t filter -A INPUT -p tcp --dport 80 -j ACCEPT
 	iptables -t filter -A INPUT -p tcp --dport 21 -j ACCEPT
-	iptables -t filter -A INPUT -p tcp --sport 2812 -j ACCEPT
+	#iptables -t filter -A INPUT -p tcp --sport 2812 -j ACCEPT #Commented until further notice
 
 	iptables -A INPUT -i eth0 -p icmp -j ACCEPT
 
-
 	iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
 	iptables -A OUTPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+	if [ "$ISVZ" = "False" ]; then
+		exec 2>>/var/log/Build.log #Special Error Log for xtable If any error while enabling Iptable GEOIP rules, check this log.
+		apt-get install iptables iptables-dev module-assistant xtables-addons-common libtext-csv-xs-perl unzip build-essential -y -q
+		module-assistant auto-install xtables-addons -i -q -n
 
-	iptables -A INPUT -m geoip --source-country RU,CN,UA,TW,TR,SK,RO,PL,CZ,BG  -j DROP #Blocking potential botnet zone (No offense intended if you live here, but it's my client policy...)
+		cd /usr/lib/xtables-addons/
+		sed -i "s/wget/wget -q/g" /usr/lib/xtables-addons/xt_geoip_dl
+		sed -i "s/unzip/unzip -q/g" /usr/lib/xtables-addons/xt_geoip_dl
+		sed -i "s/gzip/gzip -q/g" /usr/lib/xtables-addons/xt_geoip_dl
+		./xt_geoip_dl
+		./xt_geoip_build GeoIPCountryWhois.csv
+		mkdir -p /usr/share/xt_geoip/
+		cp -r {BE,LE} /usr/share/xt_geoip/
+		exec 2>>/var/log/postinstall.log #Back to normal Log
+		iptables -A INPUT -m geoip --source-country RU,CN,UA,TW,TR,SK,RO,PL,CZ,BG  -j DROP #Blocking potential botnet zone (No offense intended if you live here, but it's my client policy...)
 
-for ipok in $(cat $WHITE)
-	do
-	iptables -A INPUT -s "$ipok" -j ACCEPT
-	iptables -A OUTPUT -d "$ipok" -j ACCEPT
-done
+	fi
 
 	iptables-save > /root/iptablesbkp
 
+	rm /etc/rc.local
 	echo "/sbin/iptables-restore < /root/iptablesbkp" >> /etc/rc.local
+	echo "exit 0" >> /etc/rc.local
 
 #Paquets installation
 	#Always installed Postfix & Rootkit Hunter
@@ -205,13 +213,33 @@ done
 			elif [ "$paquet" = "prestashop1.6" ]
 			then
 			webserver=false
-				for server in $(cat $UTILS)
-				do
+
 					#If webserver nginx
-					if [ "$server" = "nginx" ]
+					if [ -d /etc/nginx ]
 						then
 						webserver=true
-						apt-get install zip -q -y
+						apt-get install zip php5-imagick php5-gd php5-mysql -q -y
+
+						if [ -s /etc/php5/mods-available/mcrypt.ini  ]; then
+							if [ -s /etc/php5/mods-enabled/mcrypt.ini ]; then
+								echo "mcrypt already enabled"
+							else
+								php5enmod mcrypt
+								echo "mcrypt enabled by Prestashop" >> $dir/mail
+								echo "" >> $dir/mail
+							fi
+						elif [ -s /etc/php5/conf.d/mcrypt.ini ]; then
+							ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
+							php5enmod mcrypt
+							echo "mcrypt symlinked & enabled by Prestashop" >> $dir/mail
+							echo "" >> $dir/mail
+						else
+							apt-get install -y -q php5-mcrypt
+							ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
+							php5enmod mcrypt
+							echo "mcrypt installed & symlinked & enabled by Prestashop" >> $dir/mail
+							echo "" >> $dir/mail
+						fi
 
 						mkdir -p $PRESTADIR
 						cd $PRESTADIR
@@ -248,8 +276,8 @@ server {
 	listen 0.0.0.0:80;
 
  	fastcgi_param  PHP_ADMIN_VALUE "open_basedir=$PRESTADIR";
-	access_log /var/log/80-access-stand-prive.com combined;
-	error_log /var/log/80-error-stand-prive.com warn;
+	access_log /var/log/80-access-$PRESTASHOPFQDN combined;
+	error_log /var/log/80-error-$PRESTASHOPFQDN warn;
 	log_not_found off;
 	expires max;
 	if_modified_since before;
@@ -307,8 +335,8 @@ server {
 #	ssl_session_cache shared:SSL:10m;
 
  	fastcgi_param  PHP_ADMIN_VALUE "open_basedir=$PRESTADIR";
-	access_log /var/log/443-access-stand-prive.com combined;
-	error_log /var/log/443-error-stand-prive.com warn;
+	access_log /var/log/443-access-$PRESTASHOPFQDN combined;
+	error_log /var/log/443-error-$PRESTASHOPFQDN warn;
 	log_not_found off;
 	expires max;
 	if_modified_since before;
@@ -355,17 +383,19 @@ server {
 
 EOF
 							ln -s /etc/nginx/sites-available/$PRESTASHOPFQDN.serverblock /etc/nginx/sites-enabled/$PRESTASHOPFQDN.serverblock
-							rm /etc/nginx/sites-enabled/default
+							if [ -s /etc/nginx/sites-enabled/default ]; then
+								rm /etc/nginx/sites-enabled/default
+							fi
 
 							service nginx restart
 
-						elif [ "$server" = "apache" ]
+						elif [ -d /etc/apache2 ]
 						then
 							echo "APACHE VHOST not supported yet" >> $dir/mail
 							webserver=true
 						fi
 
-				done
+
 
 				if [ "$webserver" = "false" ]
 					then
@@ -375,11 +405,157 @@ EOF
 			#----------------------------------#
 			#--------fin-prestashop------------#
 			#----------------------------------#
+			#----------------------------------#
+			#--------------COMPOSER------------#
+			#----------------------------------#
 			elif [ "$paquet" = "composer" ]
 				then
+
+				if [ -s /usr/local/bin/composer ]
+				then
+					echo "Composer already installed by another package" >> $dir/mail
+					echo "" >> $dir/mail
+				else
+					apt-get install curl php5-cli -y -q
 					curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
+				fi
+
+			#----------------------------------#
+			#---------------LARAVEL------------#
+			#----------------------------------#
+			elif [ "$paquet" = "laravel" ]
+				then
+				webserver=false
+					if [ -d /etc/nginx ] #If webserver is nginx
+					then
+						webserver=true
+
+						mkdir -p $LARAVELDIR
+						chown 33:33 -R $LARAVELDIR
+						chmod 755 -R $LARAVELDIR
+						# laravel mysql user creation
+						openssl rand -base64 12 > $dir/laravelpasswd
+						laravelpasswd=$(cat $dir/laravelpasswd)
+
+						cat > $dir/createdblaravel.sql << EOF
+
+CREATE DATABASE laravel;
+CREATE USER 'laravel'@'localhost' IDENTIFIED BY '$laravelpasswd';
+GRANT all ON laravel.* TO 'laravel'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+						mysql -u root -p$mysqlpasswd < $dir/createdblaravel.sql
+						echo "Mysql user for laravel : laravel" >> $dir/mail
+						echo "Mysql Password for laravel : $laravelpasswd"  >> $dir/mail
+						echo "" >> $dir/mail
+
+cat >> /etc/nginx/sites-available/$LARAVELFQDN.serverblock << EOF
+server {
+server_name $LARAVELFQDN;
+root $LARAVELDIR;
+index index.php;
+listen 0.0.0.0;
+#	ssl    on;
+#	ssl_certificate PATH_TO_CRT;
+#	ssl_certificate_key PATH_TO_key;
+#	ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:ECDHE-RSA-AES128-GCM-SHA256:AES256+EECDH:DHE-RSA-AES128-GCM-SHA256:AES256+EDH:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA:ECDHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES256-GCM-SHA384:AES128-GCM-SHA256:AES256-SHA256:AES128-SHA256:AES256-SHA:AES128-SHA:DES-CBC3-SHA:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!MD5:!PSK:!RC4";
+#	ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+#	ssl_prefer_server_ciphers on;
+#	ssl_session_cache shared:SSL:10m;
+
+fastcgi_param  PHP_ADMIN_VALUE "open_basedir=$LARAVELDIR";
+access_log /var/log/access-$LARAVELFQDN combined;
+error_log /var/log/error-$LARAVELFQDN warn;
+log_not_found off;
+expires max;
+if_modified_since before;
+client_body_buffer_size 1M;
+client_header_buffer_size 1M;
+client_max_body_size 3M;
+large_client_header_buffers 1 2M;
+client_body_timeout 10;
+client_header_timeout 10;
+keepalive_timeout 15;
+send_timeout 5;
+fastcgi_buffers 256 256k;
+fastcgi_buffer_size 512k;
+
+location / {
+	try_files \$uri \$uri/ /index.php?\$args;
+}
+location ~ \\.php$ {
+	try_files \$uri /index.php =404;
+	fastcgi_index index.php;
+	fastcgi_pass unix:/var/run/php5-fpm.sock;
+	fastcgi_split_path_info ^(.+\\.php)(/.+)$;
+	include /etc/nginx/fastcgi_params;
+}
+location ~ /\\. {
+	deny  all;
+	access_log  off;
+	log_not_found  off;
+}
+
+}
+
+EOF
+							ln -s /etc/nginx/sites-available/$LARAVELFQDN.serverblock /etc/nginx/sites-enabled/$LARAVELFQDN.serverblock
+							if [ -s /etc/nginx/sites-enabled/default ]; then
+								rm /etc/nginx/sites-enabled/default
+							fi
+
+							service nginx restart
+
+						elif [ -d /etc/apache2 ] #if web server is Apache2
+							then
+							echo "APACHE VHOST not supported yet" >> $dir/mail
+							webserver=true
+						fi
+
+					if [ "$webserver" = "false" ] # if nor Nginx nor Apache2
+						then
+						echo "Please Install a webserver in order to use laravel" >> $dir/mail
+						echo "Although it was installed as asked" >> $dir/mail
+						echo "" >> $dir/mail
+					fi
+					if [ -s /etc/php5/mods-available/mcrypt.ini  ]; then
+						if [ -s /etc/php5/mods-enabled/mcrypt.ini ]; then
+							echo "mcrypt already enabled"
+						else
+							php5enmod mcrypt
+							echo "mcrypt enabled by Laravel" >> $dir/mail
+							echo "" >> $dir/mail
+						fi
+					elif [ -s /etc/php5/conf.d/mcrypt.ini ]; then
+						ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
+						php5enmod mcrypt
+						echo "mcrypt symlinked & enabled by Laravel" >> $dir/mail
+						echo "" >> $dir/mail
+					else
+						apt-get install -y -q php5-mcrypt
+						ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
+						php5enmod mcrypt
+						echo "mcrypt installed & symlinked & enabled by Laravel" >> $dir/mail
+						echo "" >> $dir/mail
+					fi
+					service php5-fpm restart
+					if [ -s /usr/local/bin/composer ]
+					then
+						composer create-project laravel/laravel $LARAVELDIR "~5.0.0" --prefer-dist -q
+					else
+						apt-get install curl php5-cli -y -q
+						curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
+						composer create-project laravel/laravel $LARAVELDIR "~5.0.0" --prefer-dist -q
+						echo "Composer was needed by $paquet, so it was installed" >> $dir/mail
+						echo "" >> $dir/mail
+					fi
+					chown 33:33 -R $LARAVELDIR
+					chmod 755 -R $LARAVELDIR
+
 			else
-				#installation du paquet
+				#----------------------------------#
+				#---------------AUTRE--------------#
+				#----------------------------------#
 				apt-get install $paquet -y -q
 			fi
 		done
@@ -526,35 +702,50 @@ service php5-fpm restart
 
 					;;
 
+				"php5-mcrypt")
+						if [ -s /etc/php5/mods-available/mcrypt.ini  ]; then
+							if [ -s /etc/php5/mods-enabled/mcrypt.ini ]; then
+								echo "mcrypt already enabled"
+							else
+								php5enmod mcrypt
+							fi
+						else
+							ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
+							php5enmod mcrypt
+						fi
+						service php5-fpm restart
+
+					;;
+
 			"nginx")
 
 				# Nginx Setup
-			rm /etc/nginx/nginx.conf
-cat >> /etc/nginx/nginx.conf << EOF
-	user www-data;
-	worker_processes 4;
-	pid /run/nginx.pid;
+					rm /etc/nginx/nginx.conf
+					cat >> /etc/nginx/nginx.conf << EOF
+user www-data;
+worker_processes 4;
+pid /run/nginx.pid;
 
-	events {
-		worker_connections 768;
-	}
-	http {
+events {
+	worker_connections 768;
+}
+http {
 
-		sendfile on;
-		tcp_nopush on;
-		tcp_nodelay on;
-		keepalive_timeout 65;
-		types_hash_max_size 2048;
-		include /etc/nginx/mime.types;
-		default_type application/octet-stream;
-		access_log /var/log/nginx/access.log;
-		error_log /var/log/nginx/error.log;
-		gzip on;
-		gzip_disable "msie6";
-		fastcgi_cache_path /var/cache/nginx levels=1:2 keys_zone=nginxcache:10m inactive=1h max_size=1g;
-		include /etc/nginx/conf.d/*.conf;
-		include /etc/nginx/sites-enabled/*;
-	}
+	sendfile on;
+	tcp_nopush on;
+	tcp_nodelay on;
+	keepalive_timeout 65;
+	types_hash_max_size 2048;
+	include /etc/nginx/mime.types;
+	default_type application/octet-stream;
+	access_log /var/log/nginx/access.log;
+	error_log /var/log/nginx/error.log;
+	gzip on;
+	gzip_disable "msie6";
+	fastcgi_cache_path /var/cache/nginx levels=1:2 keys_zone=nginxcache:10m inactive=1h max_size=1g;
+	include /etc/nginx/conf.d/*.conf;
+	include /etc/nginx/sites-enabled/*;
+}
 
 EOF
 				cat >> serverblock.example << EOF
@@ -717,7 +908,7 @@ EOF
 					else
 						mkdir -p $dir/scripts
 						cd $dir/scripts
-						wget -q https://raw.githubusercontent.com/cthulhuely/server-install/$branch/scripts/insertftpduser.bash #Get ftp users creation script from my github
+						wget -q https://raw.githubusercontent.com/cthulhuely/server-setup/$branch/scripts/insertftpduser.bash #Get ftp users creation script from my github
 						cd $dir
 					fi
 
@@ -729,7 +920,7 @@ EOF
 						do
 
 						user=$(echo "$ftpuser" | cut -d ":" -f1)
-						userdir=$(echo "$ftpuser" | cut -d ":" -f2)
+					userdir=$(echo "$ftpuser" | cut -d ":" -f2)
 						userpasswd=$(echo "$ftpuser" | cut -d ":" -f3)
 						if [ "$userpasswd" == "random" ]
 							then
