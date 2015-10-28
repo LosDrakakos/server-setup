@@ -48,7 +48,8 @@ and
  >If your home public IP is `123.123.123.123`
 
  >Just type in `123.123.123.123/32` but wider range are supported ;)
- >```shell
+ >
+```shell
 cat >> $dir/white.list << EOF
 X.X.X.X.X/XX
 X.X.X.X.X/XX
@@ -56,13 +57,14 @@ EOF
 ```
 
 - FTP users to create (l. 75)
->Obviously you'll need to add `pure-ftpd-mysql` to the `utilities.list`
+ >Obviously you'll need to add `pure-ftpd-mysql` to the `utilities.list`
 
-  >Syntax is `username:/home/directory:password`
+ >Syntax is `username:/home/directory:password`
 If you want a randomly generated password just type `random` in the password field.
 >In the example below, username1's password will be `username1password`
 but username2's password will be randomly generated
->```shell
+>
+```shell
 cat >> $dir/usersftp.list << EOF
 username1:/home/username1:username1password
 username2:/home/username2:random
@@ -70,15 +72,16 @@ EOF
 ```
 
 - SSH Keys (l. 24)
->You keys will be added to the root user
->Just add your public keys separeted with `\n` (no spaces)
+ >You keys will be added to the root user
+ >Just add your public keys separeted with `\n` (no spaces)
 ```shell
 CLEF_SSH='KEY1\nKEY2\KEY3'
 ```
 
 - SSH Listening port (l 30)
  > It is set by default to 22. although i strongly advise to change it to something less known
- >```shell
+ >
+```shell
  SSH_PORT="22"
  ```
 
@@ -94,7 +97,8 @@ CLEF_SSH='KEY1\nKEY2\KEY3'
  >Just fill in thoose parameters, the script will do the rest.
 If you don't have a M/Monit server, just leave  MONITSERVER & MONITUSER & MONITPASSWORD to their default values
 
- >```shell
+ >
+ ```shell
 #PLEASE ONLY USE ONE ADRESS HERE
 MONITRECIPIENT='me@example.com' #Address that will be directly alerted by monit (mmonit notif are independant)
 MONITSERVER="mmonit.example.com" #M/Monit Server FQDN or IP Address
@@ -114,7 +118,8 @@ MONITPASSWORD="mmonitpasswd" #Distant M/Monit User Password
 
  >See below the default package bundle :
 
- >```shell
+ >
+ ```shell
 cat >> $dir/utilities.list << EOF
 mysql-server
 nginx
