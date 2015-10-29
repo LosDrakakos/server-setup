@@ -134,7 +134,7 @@ EOF
 ```
 
 - If you are running in an OpenVZ CT (l .23)
-  > Set `ISVZ` to `True`, there is an issue between OpenVZ Kernel and some iptables modules, it prevents from using those troublesomes modules
+  > Set `ISVZ` to `True`, there is an issue between OpenVZ Kernel and some iptables modules, it prevents from using those troublesomes modules. (No Issues with LXC so far)
   ```shell
   ISVZ="False" # If the system is in container and does not have its own Kernel (Like OpenVZ)
   ```
