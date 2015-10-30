@@ -1,7 +1,7 @@
 # server-install
 ##### Pull request are welcome on `experimental` branch
 This is a collection of bash scripts (for now, some python scripts will follow) with purpose of server setup & deployment.
-
+ 
 ## web-server-install.bash
 ##### Fully Ubuntu compatible | Not tested With Debian but should work
 Bash script that install and configure a fully operational Web server
