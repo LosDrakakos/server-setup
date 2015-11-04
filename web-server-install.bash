@@ -252,11 +252,9 @@ EOF
 						# Prestashop mysql user creation
 						openssl rand -base64 12 > $dir/prestapasswd
 						prestapasswd=$(cat $dir/prestapasswd)
-
+						#Creating Database for pure-ftpd-mysql
+						#With user 'pureftpd', the password is randomly generated
 						cat > $dir/createdbpresta.sql << EOF
-
-#Creating Database for pure-ftpd-mysql
-#With user 'pureftpd', the password is randomly generated
 CREATE DATABASE prestashop;
 CREATE USER 'prestashop'@'localhost' IDENTIFIED BY '$prestapasswd';
 GRANT all ON prestashop.* TO 'prestashop'@'localhost';
@@ -264,6 +262,7 @@ FLUSH PRIVILEGES;
 EOF
 
 						mysql -u root -p$mysqlpasswd < $dir/createdbpresta.sql
+
 						echo "Mysql user for Prestashop : prestashop" >> $dir/mail
 						echo "Mysql Password for Prestashop : $prestapasswd"  >> $dir/mail
 						echo "" >> $dir/mail
@@ -281,10 +280,10 @@ server {
 	log_not_found off;
 	expires max;
 	if_modified_since before;
-	client_body_buffer_size 1M;
-	client_header_buffer_size 1M;
-	client_max_body_size 3M;
-	large_client_header_buffers 1 2M;
+	client_body_buffer_size 10M;
+	client_header_buffer_size 10M;
+	client_max_body_size 30M;
+	large_client_header_buffers 1 20M;
 	client_body_timeout 10;
 	client_header_timeout 10;
 	keepalive_timeout 15;
@@ -340,10 +339,10 @@ server {
 	log_not_found off;
 	expires max;
 	if_modified_since before;
-	client_body_buffer_size 1M;
-	client_header_buffer_size 1M;
-	client_max_body_size 3M;
-	large_client_header_buffers 1 2M;
+	client_body_buffer_size 10M;
+	client_header_buffer_size 10M;
+	client_max_body_size 30M;
+	large_client_header_buffers 1 20M;
 	client_body_timeout 10;
 	client_header_timeout 10;
 	keepalive_timeout 15;
@@ -469,10 +468,10 @@ error_log /var/log/error-$LARAVELFQDN warn;
 log_not_found off;
 expires max;
 if_modified_since before;
-client_body_buffer_size 1M;
-client_header_buffer_size 1M;
-client_max_body_size 3M;
-large_client_header_buffers 1 2M;
+client_body_buffer_size 10M;
+client_header_buffer_size 10M;
+client_max_body_size 30M;
+large_client_header_buffers 1 20M;
 client_body_timeout 10;
 client_header_timeout 10;
 keepalive_timeout 15;
@@ -588,6 +587,7 @@ zend.enable_gc = On
 expose_php = Off
 max_execution_time = 60
 max_input_time = 60
+max_input_vars = 20000
 memory_limit = 256M
 error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
 display_errors = Off
@@ -718,19 +718,21 @@ service php5-fpm restart
 					;;
 
 			"nginx")
+					cpucores=$(grep processor /proc/cpuinfo | wc -l)
+					halfcpucore=$(( $cpucores / 2 ))
 
 				# Nginx Setup
 					rm /etc/nginx/nginx.conf
 					cat >> /etc/nginx/nginx.conf << EOF
 user www-data;
-worker_processes 4;
+worker_processes $halfcpucore;
 pid /run/nginx.pid;
 
 events {
-	worker_connections 768;
+	worker_connections 2048;
 }
 http {
-
+	server_tokens off;
 	sendfile on;
 	tcp_nopush on;
 	tcp_nodelay on;
@@ -765,7 +767,8 @@ server {
 }
 
 EOF
-
+echo "www-data soft nofile 65535" >> /etc/security/limits.conf
+echo "www-data hard nofile 65535" >> /etc/security/limits.conf
 				service nginx restart
 
 				;;
