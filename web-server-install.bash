@@ -149,8 +149,34 @@ EOF
 	#iptables -t filter -A OUTPUT -p tcp --dport 2812 -j ACCEPT #Commented until further notice
 	iptables -t filter -A INPUT -p tcp --dport 443 -j ACCEPT
 	iptables -t filter -A INPUT -p tcp --dport 80 -j ACCEPT
-	iptables -t filter -A INPUT -p tcp --dport 21 -j ACCEPT
+	#iptables -t filter -A INPUT -p tcp --dport 21 -j ACCEPT Now activated by installing ftp server
 	#iptables -t filter -A INPUT -p tcp --sport 2812 -j ACCEPT #Commented until further notice
+
+	# Dropping Bing Ip Addresses the bot is configured in a such way that it tends to lead to DOS... not something really nice...
+	iptables -A INPUT -s 40.120.0.0/14 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.76.0.0/14 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.96.0.0/12 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.124.0.0/16 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.112.0.0/13 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.80.0.0/12 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.74.0.0/15 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.125.0.0/17 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.120.0.0/14 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 40.76.0.0/14 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 40.96.0.0/12 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 40.124.0.0/16 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 40.112.0.0/13 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 40.80.0.0/12 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 40.74.0.0/15 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 40.125.0.0/17 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 207.46.0.0/16 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 207.46.0.0/16 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 157.54.0.0/15 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 157.54.0.0/15 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 157.56.0.0/14 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 157.56.0.0/14 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 157.60.0.0/16 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 157.60.0.0/16 -p tcp -m tcp --dport 80 -j DROP
 
 	iptables -A INPUT -i eth0 -p icmp -j ACCEPT
 
@@ -207,6 +233,23 @@ EOF
 				echo "Mysql user : root"  >> $dir/mail
 				echo "Mysql root Password : $mysqlpasswd"  >> $dir/mail
 				echo ""  >> $dir/mail
+				for mysqluser in $(cat $USERSMYSQL)
+					do
+
+					user=$(echo "$mysqluser" | cut -d ":" -f1)
+					dbname=$(echo "$mysqluser" | cut -d ":" -f2)
+					userpasswd=$(echo "$mysqluser" | cut -d ":" -f3)
+					if [ "$userpasswd" == "random" ]
+						then
+						openssl rand -base64 12 > $dir/userpasswd
+						userpasswd=$(cat $dir/userpasswd)
+					fi
+					bash $dir/scripts/insertftpduser.bash $user $userdir $userpasswd
+					echo "Pureftpd user : $user" >> $dir/mail
+					echo "$user homedir : $userdir" >> $dir/mail
+					echo "$user ftp password : $userpasswd" >> $dir/mail
+					echo "" >> $dir/mail
+				done
 			#----------------------------------#
 			#------------prestashop------------#
 			#----------------------------------#
@@ -507,7 +550,7 @@ EOF
 
 						elif [ -d /etc/apache2 ] #if web server is Apache2
 							then
-							echo "APACHE VHOST not supported yet" >> $dir/mail
+							echo "APACHE not supported yet" >> $dir/mail
 							webserver=true
 						fi
 
@@ -664,7 +707,6 @@ session.name = PHPSESSID
 session.auto_start = 0
 session.cookie_lifetime = 0
 session.cookie_path = /
-languages such as JavaScript.
 session.serialize_handler = php
 session.gc_probability = 0
 session.gc_divisor = 1000
@@ -767,7 +809,7 @@ server {
 }
 
 EOF
-echo "www-data soft nofile 65535" >> /etc/security/limits.conf
+echo "(www-data soft nofile 65535)" >> /etc/security/limits.conf
 echo "www-data hard nofile 65535" >> /etc/security/limits.conf
 				service nginx restart
 
@@ -776,7 +818,8 @@ echo "www-data hard nofile 65535" >> /etc/security/limits.conf
 				"monit")
 
 					# Monit Setup
-
+					cpucores=$(grep processor /proc/cpuinfo | wc -l)
+					halfcpucore=$(( $cpucores / 2 ))
 					rm /etc/monit/monitrc
 					cat >> /etc/monit/monitrc << EOF
 set alert $MONITRECIPIENT
@@ -800,15 +843,15 @@ allow $MONITSERVER
 allow $MONITUSER:$MONITPASSWORD
 include /etc/monit/conf.d/*
 check system \$HOST
-	if loadavg (5min) > 8 then alert
-	if loadavg (15min) > 6 then alert
+	if loadavg (5min) > $cpucores then alert
+	if loadavg (15min) > $halfcpucores then alert
 	if memory usage > 80% for 4 cycles then alert
-	if cpu(system) is greater than 400% for 5 cycles then alert
-	if cpu(user) is greater than 400% for 5 cycles then alert
-	if cpu(wait) is greater than 400% for 5 cycles then alert
-	if cpu(system) is greater than 800% for 5 cycles then alert
-	if cpu(user) is greater than 800% for 5 cycles then alert
-	if cpu(wait) is greater than 800% for 5 cycles then alert
+	if cpu(system) is greater than ${halfcpucores}00% for 5 cycles then alert
+	if cpu(user) is greater than ${halfcpucores}00% for 5 cycles then alert
+	if cpu(wait) is greater than ${halfcpucores}00% for 5 cycles then alert
+	if cpu(system) is greater than ${cpucores}00% for 5 cycles then alert
+	if cpu(user) is greater than ${cpucores}00% for 5 cycles then alert
+	if cpu(wait) is greater than ${cpucores}00% for 5 cycles then alert
 
 check process nginx with pidfile /var/run/nginx.pid
 	start program = "/etc/init.d/nginx start"
@@ -870,7 +913,7 @@ FLUSH PRIVILEGES;
 EOF
 
 					mysql -u root -p$mysqlpasswd < $dir/createdb.sql
-
+					echo "40110 40210" > /etc/pure-ftpd/conf/PassivePortRange
 					echo "yes" > /etc/pure-ftpd/conf/NoAnonymous
 					echo "/etc/pure-ftpd/db/mysql.conf" > /etc/pure-ftpd/conf/MySQLConfigFile
 					echo "yes" > /etc/pure-ftpd/conf/CreateHomeDir
@@ -880,6 +923,10 @@ EOF
 					echo "no" > /etc/pure-ftpd/conf/UnixAuthentication
 					echo "yes" > /etc/pure-ftpd/conf/DisplayDotFiles
 					echo "yes" > /etc/pure-ftpd/conf/VerboseLog
+
+					iptables -A INPUT -p tcp --match multiport --dports 40110:40210 -j ACCEPT
+					iptables -t filter -A INPUT -p tcp --dport 21 -j ACCEPT
+					iptables-save > /root/iptablesbkp
 
 					cat > /etc/pure-ftpd/db/mysql.conf << EOF
 
