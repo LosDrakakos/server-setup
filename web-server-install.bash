@@ -19,22 +19,21 @@ export DEBIAN_FRONTEND=noninteractive
 	UTILS="$dir/utilities.list"	#Please don't modify unless you know what you are doing
 	WHITE="$dir/white.list"	#Please don't modify unless you know what you are doing
 	USERSFTP="$dir/usersftp.list" #Please don't modify unless you know what you are doing
+	USERSMYSQL="$dir/usersmysql.list"
 	hostn="srv.example.com"	#Server Hostname (Please use a FSQN and don't forget to setup your PTR)
 	ISVZ="False" # Set to 'True' if the system is in container and does not have its own Kernel (Like OpenVZ)
 	CLEF_SSH='KEY1\nKEY2\KEY3' 	#Separate Key with \n
 	EMAILRECIPIENT='me@example.com, my_colleague@example.com, another_colleague@example.com' #A mail will be sent to theese with the differents passwords generated Followed by the Error Log, there's no email adress limit
-	MONITRECIPIENT='me@example.com' #Address that will be directly alerted by monit (mmonit notif are independant) PLEASE ONLY USE ONE ADRESS HERE
-	MONITSERVER="mmonit.example.com" #M/Monit Server FQDN or IP Address
-	MONITUSER="mmonituser" #Distant M/Monit User
-	MONITPASSWORD="mmonitpasswd" #Distant M/Monit User Password
+	MONITRECIPIENT='monitoring.guy@example.com' #Address that will be directly alerted by monit (mmonit notif are independant) PLEASE ONLY USE ONE ADRESS HERE
+	MONITSERVER="monitoring.example.com" #M/Monit Server FQDN or IP Address
+	MONITUSER="exampleuser" #Distant M/Monit User
+	MONITPASSWORD="password" #Distant M/Monit User Password
 	SSH_PORT="22" #SSH Listening port, 22 is default, I strongly recommend to change it
 	PRESTASHOPFQDN="prestashop.example.com" #The FQDN pointing to your web site (be sure to setup your ZoneDNS or HOSTS file accordingly)
 	PRESTADIR="/home/www/prestashop/www" # Absolute Path for your prestashop webdir
 	LARAVELFQDN="laravel.example.com" #The FQDN pointing to your web site (be sure to setup your ZoneDNS or HOSTS file accordingly)
 	LARAVELDIR="/home/www/laravel" # Absolute Path for your laravel clean install. As the web accessible file is $LARAVELDIR/public, i don't sense the nececity of adding an extra www folder, like for prestashop
 
-#GET du Utilities depuis le NAS (Don't mind this comment)
-#Si pas de NAS (Don't mind this comment)
 #Package You want to install
 #The default list should be enough
 #But feel free to add others
@@ -55,22 +54,16 @@ monit
 pure-ftpd-mysql
 EOF
 
-#Fin Si pas de NAS (Don't mind this comment)
-
-#GET WhiteList depuis le NAS (Don't mind this comment)
-#Si pas de NAS (Don't mind this comment)
 #IP you want to bypasss the firewall (please only use static IP you own, could be dangerous otherwise)
 #IP Format xxx.xxx.xxx.xxx/xx
 
 cat >> $dir/white.list << EOF
-X.X.X.X.X/XX
-X.X.X.X.X/XX
+88.163.22.99/32
+90.63.178.63/32
+78.226.56.137/32
+51.254.129.104/32
 EOF
 
-#Fin Si pas de NAS (Don't mind this comment)
-
-#GET FTPUserList depuis le NAS (Don't mind this comment)
-#Si pas de NAS (Don't mind this comment)
 #FTPUserTo create Automatically
 #Syntax is username:/home/directory:password
 #If you want a randomly generated password just type 'random' in the password field
@@ -80,13 +73,25 @@ cat >> $dir/usersftp.list << EOF
 username1:/home/username1:username1password
 username2:/home/username2:random
 EOF
-#Fin Si pas de NAS (Don't mind this comment)
+
+#MySQL User to create Automatically
+#Syntax is username:databasename:password:allowedhost
+#If you want a randomly generated password just type 'random' in the password field
+#In the example below, username1's will have access to MySQL from anywhere (given that port 3306 is open, or that his IP is in the whitelist)
+#but username2 will need to be on the local machine in order to user his database
+cat >> $dir/usersmysql.list << EOF
+username1:database1:username1password:%
+username2:username2:random:localhost
+EOF
 
 ##############################
 #----- FIN DECLARATIONS -----#
 ##############################
 
 	echo "subject : $hostn Postinstall Report" > $dir/mail
+# Getting CPU cpucores number
+	cpucores=$(grep processor /proc/cpuinfo | wc -l)
+	halfcpucores=$(( $cpucores / 2 ))
 
 #Replacing Hostname you'll need to reboot at the end of the script
 	sed -i "s/$HOSTNAME/$hostn/g" /etc/hosts
@@ -196,7 +201,7 @@ EOF
 		mkdir -p /usr/share/xt_geoip/
 		cp -r {BE,LE} /usr/share/xt_geoip/
 		exec 2>>/var/log/postinstall.log #Back to normal Log
-		iptables -A INPUT -m geoip --source-country RU,CN,UA,TW,TR,SK,RO,PL,CZ,BG  -j DROP #Blocking potential botnet zone (No offense intended if you live here, but it's my client policy...)
+		iptables -A INPUT -m geoip --source-country RU,CN,UA,TW,TR,SK,RO,PL,CZ,BG  -j DROP #Blocking potential botnet zone (No offense intended if you live here...)
 
 	fi
 
@@ -236,19 +241,71 @@ EOF
 				for mysqluser in $(cat $USERSMYSQL)
 					do
 
-					user=$(echo "$mysqluser" | cut -d ":" -f1)
+					dbuser=$(echo "$mysqluser" | cut -d ":" -f1)
 					dbname=$(echo "$mysqluser" | cut -d ":" -f2)
 					userpasswd=$(echo "$mysqluser" | cut -d ":" -f3)
+					allowhost=$(echo "$mysqluser" | cut -d ":" -f3)
 					if [ "$userpasswd" == "random" ]
 						then
 						openssl rand -base64 12 > $dir/userpasswd
 						userpasswd=$(cat $dir/userpasswd)
 					fi
-					bash $dir/scripts/insertftpduser.bash $user $userdir $userpasswd
-					echo "Pureftpd user : $user" >> $dir/mail
-					echo "$user homedir : $userdir" >> $dir/mail
-					echo "$user ftp password : $userpasswd" >> $dir/mail
+					cat > $dir/createdbuser.sql << EOF
+CREATE DATABASE $dbname IF NOT EXISTS;
+CREATE USER '$dbuser'@'$allowhost' IDENTIFIED BY '$userpasswd';
+GRANT all ON prestashop.* TO '$dbuser'@'$allowhost';
+FLUSH PRIVILEGES;
+EOF
+
+					mysql -u root -p$mysqlpasswd < $dir/createdbpresta.sql
+					echo "MySQL user : $user" >> $dir/mail
+					echo "Database : $userdir" >> $dir/mail
+					echo "password : $userpasswd" >> $dir/mail
 					echo "" >> $dir/mail
+					rm /etc/mysql/my.cnf
+					cat >> /etc/mysql/my.cnf << EOF
+[client]
+port		= 3306
+socket		= /var/run/mysqld/mysqld.sock
+[mysqld_safe]
+socket		= /var/run/mysqld/mysqld.sock
+nice		= 0
+[mysqld]
+user		= mysql
+pid-file	= /var/run/mysqld/mysqld.pid
+socket		= /var/run/mysqld/mysqld.sock
+port		= 3306
+basedir		= /usr
+datadir		= /home/mysql
+tmpdir		= /tmp
+lc-messages-dir	= /usr/share/mysql
+skip-external-locking
+bind-address		= 0.0.0.0
+key_buffer		= 64M
+max_allowed_packet	= 64M
+thread_stack		= 192K
+thread_cache_size       = 20
+myisam-recover         = BACKUP
+max_connections        = 4096
+table_cache            = 2048
+innodb_buffer_pool_size = 300M
+join_buffer_size = 512K
+tmp_table_size = 50M
+max_heap_table_size = 50M
+query_cache_limit	= 64M
+query_cache_size        = 256M
+log_error = /var/log/mysql/error.log
+expire_logs_days	= 10
+max_binlog_size         = 100M
+[mysqldump]
+quick
+quote-names
+max_allowed_packet	= 256M
+[mysql]
+[isamchk]
+key_buffer		= 256M
+!includedir /etc/mysql/conf.d/
+EOF
 				done
 			#----------------------------------#
 			#------------prestashop------------#
@@ -321,8 +378,6 @@ server {
 	access_log /var/log/80-access-$PRESTASHOPFQDN combined;
 	error_log /var/log/80-error-$PRESTASHOPFQDN warn;
 	log_not_found off;
-	expires max;
-	if_modified_since before;
 	client_body_buffer_size 10M;
 	client_header_buffer_size 10M;
 	client_max_body_size 30M;
@@ -358,7 +413,6 @@ server {
 	}
 	location ~ /\\. {
 		deny  all;
-		access_log  off;
 		log_not_found  off;
 	}
 
@@ -380,8 +434,6 @@ server {
 	access_log /var/log/443-access-$PRESTASHOPFQDN combined;
 	error_log /var/log/443-error-$PRESTASHOPFQDN warn;
 	log_not_found off;
-	expires max;
-	if_modified_since before;
 	client_body_buffer_size 10M;
 	client_header_buffer_size 10M;
 	client_max_body_size 30M;
@@ -417,7 +469,6 @@ server {
 	}
 	location ~ /\\. {
 		deny  all;
-		access_log  off;
 		log_not_found  off;
 	}
 
@@ -614,7 +665,6 @@ EOF
 
 					rm /etc/php5/fpm/php.ini
 					cat >> /etc/php5/fpm/php.ini << EOF
-
 [PHP]
 engine = On
 short_open_tag = Off
@@ -631,8 +681,8 @@ expose_php = Off
 max_execution_time = 60
 max_input_time = 60
 max_input_vars = 20000
-memory_limit = 256M
-error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
+memory_limit = 2048M
+error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT & ~E_NOTICE
 display_errors = Off
 display_startup_errors = Off
 log_errors = On
@@ -707,6 +757,7 @@ session.name = PHPSESSID
 session.auto_start = 0
 session.cookie_lifetime = 0
 session.cookie_path = /
+#languages such as JavaScript.
 session.serialize_handler = php
 session.gc_probability = 0
 session.gc_divisor = 1000
@@ -728,7 +779,7 @@ soap.wsdl_cache_ttl=86400
 soap.wsdl_cache_limit = 5
 [opcache]
 opcache.enable=1
-opcache.memory_consumption=512
+opcache.memory_consumption=1024
 opcache.interned_strings_buffer=4
 opcache.max_accelerated_files=5000
 opcache.use_cwd=1
@@ -737,7 +788,6 @@ opcache.revalidate_freq=60
 opcache.save_comments=0
 opcache.load_comments=0
 opcache.fast_shutdown=1
-
 EOF
 
 service php5-fpm restart
@@ -760,36 +810,44 @@ service php5-fpm restart
 					;;
 
 			"nginx")
-					cpucores=$(grep processor /proc/cpuinfo | wc -l)
-					halfcpucore=$(( $cpucores / 2 ))
+
 
 				# Nginx Setup
 					rm /etc/nginx/nginx.conf
 					cat >> /etc/nginx/nginx.conf << EOF
 user www-data;
-worker_processes $halfcpucore;
+worker_processes $halfcpucores;
 pid /run/nginx.pid;
 
 events {
-	worker_connections 2048;
+  worker_connections 16384;
+	multi_accept on;
+	use epoll;
 }
 http {
+  sendfile on;
+  tcp_nopush on;
+  tcp_nodelay on;
+  keepalive_timeout 15;
+  types_hash_max_size 2048;
+  include /etc/nginx/mime.types;
+  default_type application/octet-stream;
+  access_log /var/log/nginx/access.log;
+  error_log /var/log/nginx/error.log;
+  gzip on;
+  gzip_disable "msie6";
+  gzip_min_length 10240;
+  fastcgi_cache_path /var/cache/nginx levels=1:2 keys_zone=nginxcache:10m inactive=1h max_size=1g;
+  include /etc/nginx/conf.d/*.conf;
+  include /etc/nginx/sites-enabled/*;
+  open_file_cache          max=20000 inactive=20s;
+  open_file_cache_valid    30s;
+  open_file_cache_min_uses 2;
+  open_file_cache_errors   on;
+  reset_timedout_connection on;
 	server_tokens off;
-	sendfile on;
-	tcp_nopush on;
-	tcp_nodelay on;
-	keepalive_timeout 65;
-	types_hash_max_size 2048;
-	include /etc/nginx/mime.types;
-	default_type application/octet-stream;
-	access_log /var/log/nginx/access.log;
-	error_log /var/log/nginx/error.log;
-	gzip on;
-	gzip_disable "msie6";
-	fastcgi_cache_path /var/cache/nginx levels=1:2 keys_zone=nginxcache:10m inactive=1h max_size=1g;
-	include /etc/nginx/conf.d/*.conf;
-	include /etc/nginx/sites-enabled/*;
 }
+
 
 EOF
 				cat >> serverblock.example << EOF
@@ -798,6 +856,21 @@ server {
     server_name www.example.com;
     root /example/directory/;
     index index.html index.php;
+
+		fastcgi_param  PHP_ADMIN_VALUE "open_basedir=/PATH/TO/WEB/DIR";
+		access_log /var/log/80-access-WEBSITEFQDN combined;
+		error_log /var/log/80-error-WEBSITEFQDN warn;
+		log_not_found off;
+		client_body_buffer_size 10M;
+		client_header_buffer_size 10M;
+		client_max_body_size 30M;
+		large_client_header_buffers 1 20M;
+		client_body_timeout 10;
+		client_header_timeout 10;
+		keepalive_timeout 15;
+		send_timeout 5;
+		fastcgi_buffers 256 256k;
+		fastcgi_buffer_size 512k;
 
     location ~ \\.php$
     {
@@ -818,8 +891,6 @@ echo "www-data hard nofile 65535" >> /etc/security/limits.conf
 				"monit")
 
 					# Monit Setup
-					cpucores=$(grep processor /proc/cpuinfo | wc -l)
-					halfcpucore=$(( $cpucores / 2 ))
 					rm /etc/monit/monitrc
 					cat >> /etc/monit/monitrc << EOF
 set alert $MONITRECIPIENT

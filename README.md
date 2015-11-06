@@ -1,7 +1,7 @@
 # server-install
 ##### Pull request are welcome on `experimental` branch
 This is a collection of bash scripts (for now, some python scripts will follow) with purpose of server setup & deployment.
- 
+
 ## web-server-install.bash
 ##### Fully Ubuntu compatible | Not tested With Debian but should work
 Bash script that install and configure a fully operational Web server
@@ -130,6 +130,22 @@ php5-mcrypt
 php5-mysql
 monit
 pure-ftpd-mysql
+EOF
+```
+
+- Mysql User and DB to create (l. 81)
+
+ > Syntax is `username:databasename:password:allowedhost`
+
+ > If you want a randomly generated password just type 'random' in the password field
+
+ > In the example below, username1's will have access to MySQL from anywhere (given that port 3306 is open, or that his IP is in the whitelist), but username2 will need to be on the local machine in order to user his database
+ 
+ >
+ ```shell
+cat >> $dir/usersmysql.list << EOF
+username1:database1:username1password:%
+username2:username2:random:localhost
 EOF
 ```
 
