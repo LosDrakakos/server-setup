@@ -1,15 +1,15 @@
 #!/bin/bash
 #Creation d'utlisateur pureftpd
 if [[ -z "$1" ]]; then
-	echo "Rappel sur l'utilisation de la commande : $0 Username home password" 1>&2
+	echo "Kind Reminder : $0 Username home password" 1>&2
 	exit 1
 fi
 if [[ -z "$2" ]]; then
-	echo "Rappel sur l'utilisation de la commande : $0 Username home password" 1>&2
+	echo "Kind Reminder : $0 Username home password" 1>&2
 	exit 1
 fi
 if [[ -z "$3" ]]; then
-	echo "Rappel sur l'utilisation de la commande : $0 Username home password" 1>&2
+	echo "Kind Reminder : $0 Username home password" 1>&2
 	exit 1
 fi
 

@@ -19,24 +19,27 @@ export DEBIAN_FRONTEND=noninteractive
 	UTILS="$dir/utilities.list"	#Please don't modify unless you know what you are doing
 	WHITE="$dir/white.list"	#Please don't modify unless you know what you are doing
 	USERSFTP="$dir/usersftp.list" #Please don't modify unless you know what you are doing
+	USERSMYSQL="$dir/usersmysql.list"
 	hostn="srv.example.com"	#Server Hostname (Please use a FSQN and don't forget to setup your PTR)
+	ISVZ="False" # Set to 'True' if the system is in container and does not have its own Kernel (Like OpenVZ)
 	CLEF_SSH='KEY1\nKEY2\KEY3' 	#Separate Key with \n
 	EMAILRECIPIENT='me@example.com, my_colleague@example.com, another_colleague@example.com' #A mail will be sent to theese with the differents passwords generated Followed by the Error Log, there's no email adress limit
-	MONITRECIPIENT='me@example.com' #Address that will be directly alerted by monit (mmonit notif are independant) PLEASE ONLY USE ONE ADRESS HERE
-	MONITSERVER="mmonit.example.com" #M/Monit Server FQDN or IP Address
-	MONITUSER="mmonituser" #Distant M/Monit User
-	MONITPASSWORD="mmonitpasswd" #Distant M/Monit User Password
-	SSH_PORT="22" #SSH Listening port, 22 is default, I recommend to change it
-	PRESTASHOPFQDN="prestashop.example.com" #The FQDN pointing to your web site (be sure to setup your ZoneDNS accordingly)
+	MONITRECIPIENT='monitoring.guy@example.com' #Address that will be directly alerted by monit (mmonit notif are independant) PLEASE ONLY USE ONE ADRESS HERE
+	MONITSERVER="monitoring.example.com" #M/Monit Server FQDN or IP Address
+	MONITUSER="exampleuser" #Distant M/Monit User
+	MONITPASSWORD="password" #Distant M/Monit User Password
+	SSH_PORT="22" #SSH Listening port, 22 is default, I strongly recommend to change it
+	PRESTASHOPFQDN="prestashop.example.com" #The FQDN pointing to your web site (be sure to setup your ZoneDNS or HOSTS file accordingly)
 	PRESTADIR="/home/www/prestashop/www" # Absolute Path for your prestashop webdir
+	LARAVELFQDN="laravel.example.com" #The FQDN pointing to your web site (be sure to setup your ZoneDNS or HOSTS file accordingly)
+	LARAVELDIR="/home/www/laravel" # Absolute Path for your laravel clean install. As the web accessible file is $LARAVELDIR/public, i don't sense the nececity of adding an extra www folder, like for prestashop
 
-#GET du Utilities depuis le NAS (Don't mind this comment)
-#Si pas de NAS (Don't mind this comment)
 #Package You want to install
 #The default list should be enough
 #But feel free to add others
 #Please keep in mind that if you add your own packages
 #that prompts could show up, and you could need human intervention for the script to end
+# Package currently fully-supported : mysql-server, nginx, php5-fpm, php5-mcrypt, monit, pure-ftpd-mysql, laravel, prestashop1.6
 #Please Always put mysql-server first
 
 cat >> $dir/utilities.list << EOF
@@ -51,22 +54,13 @@ monit
 pure-ftpd-mysql
 EOF
 
-#Fin Si pas de NAS (Don't mind this comment)
-
-#GET WhiteList depuis le NAS (Don't mind this comment)
-#Si pas de NAS (Don't mind this comment)
 #IP you want to bypasss the firewall (please only use static IP you own, could be dangerous otherwise)
 #IP Format xxx.xxx.xxx.xxx/xx
 
 cat >> $dir/white.list << EOF
-X.X.X.X.X/XX
-X.X.X.X.X/XX
+xxx.xxx.xxx.xxx/xx
 EOF
 
-#Fin Si pas de NAS (Don't mind this comment)
-
-#GET FTPUserList depuis le NAS (Don't mind this comment)
-#Si pas de NAS (Don't mind this comment)
 #FTPUserTo create Automatically
 #Syntax is username:/home/directory:password
 #If you want a randomly generated password just type 'random' in the password field
@@ -76,17 +70,30 @@ cat >> $dir/usersftp.list << EOF
 username1:/home/username1:username1password
 username2:/home/username2:random
 EOF
-#Fin Si pas de NAS (Don't mind this comment)
+
+#MySQL User to create Automatically
+#Syntax is username:databasename:password:allowedhost
+#If you want a randomly generated password just type 'random' in the password field
+#In the example below, username1's will have access to MySQL from anywhere (given that port 3306 is open, or that his IP is in the whitelist)
+#but username2 will need to be on the local machine in order to user his database
+cat >> $dir/usersmysql.list << EOF
+username1:database1:username1password:%
+username2:username2:random:localhost
+EOF
 
 ##############################
 #----- FIN DECLARATIONS -----#
 ##############################
 
 	echo "subject : $hostn Postinstall Report" > $dir/mail
+# Getting CPU cpucores number
+	cpucores=$(grep processor /proc/cpuinfo | wc -l)
+	halfcpucores=$(( $cpucores / 2 ))
 
 #Replacing Hostname you'll need to reboot at the end of the script
-		sed -i "s/$HOSTNAME/$hostn/g" /etc/hosts
+	sed -i "s/$HOSTNAME/$hostn/g" /etc/hosts
 	sed -i "s/$HOSTNAME/$hostn/g" /etc/hostname
+	hostname $hostn
 
 #Logging Errors
 	if [ -s /var/log/postinstall.log ]
@@ -119,25 +126,18 @@ EOF
 
 # Firewall Whitelist
 
-	#Install GEOIP
-	exec 2>>/var/log/Build.log #Special Error Log for xtable If any error while enabling Iptable GEOIP rules, check this log.
-	apt-get install iptables iptables-dev module-assistant xtables-addons-common libtext-csv-xs-perl unzip build-essential -y -q
-	module-assistant auto-install xtables-addons -i -q -n
+	apt-get install iptables -y -q
 
-	cd /usr/lib/xtables-addons/
-	sed -i "s/wget/wget -q/g" /usr/lib/xtables-addons/xt_geoip_dl
-	sed -i "s/unzip/unzip -q/g" /usr/lib/xtables-addons/xt_geoip_dl
-	sed -i "s/gzip/gzip -q/g" /usr/lib/xtables-addons/xt_geoip_dl
-	./xt_geoip_dl
-	./xt_geoip_build GeoIPCountryWhois.csv
-	mkdir -p /usr/share/xt_geoip/
-	cp -r {BE,LE} /usr/share/xt_geoip/
-	cd $dir
-	exec 2>>/var/log/postinstall.log #Back to normal Log
 	#Whitelist
 	iptables -F
 	iptables -t filter -P OUTPUT DROP
 	iptables -t filter -P INPUT DROP
+
+	for ipok in $(cat $WHITE)
+		do
+		iptables -A INPUT -s "$ipok" -j ACCEPT
+		iptables -A OUTPUT -d "$ipok" -j ACCEPT
+	done
 
 	iptables -t filter -A INPUT -i lo -j ACCEPT
 	iptables -t filter -A OUTPUT -o lo -j ACCEPT
@@ -148,29 +148,65 @@ EOF
 	iptables -t filter -A OUTPUT -p udp --dport 53 -j ACCEPT
 	iptables -t filter -A OUTPUT -p udp --dport 123 -j ACCEPT
 	iptables -t filter -A OUTPUT -p tcp --dport 443 -j ACCEPT
-	iptables -t filter -A OUTPUT -p tcp --dport 2812 -j ACCEPT
+	#iptables -t filter -A OUTPUT -p tcp --dport 2812 -j ACCEPT #Commented until further notice
 	iptables -t filter -A INPUT -p tcp --dport 443 -j ACCEPT
 	iptables -t filter -A INPUT -p tcp --dport 80 -j ACCEPT
-	iptables -t filter -A INPUT -p tcp --dport 21 -j ACCEPT
-	iptables -t filter -A INPUT -p tcp --sport 2812 -j ACCEPT
+	#iptables -t filter -A INPUT -p tcp --dport 21 -j ACCEPT Now activated by installing ftp server
+	#iptables -t filter -A INPUT -p tcp --sport 2812 -j ACCEPT #Commented until further notice
+
+	# Dropping Bing Ip Addresses the bot is configured in a such way that it tends to lead to DOS... not something really nice...
+	iptables -A INPUT -s 40.120.0.0/14 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.76.0.0/14 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.96.0.0/12 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.124.0.0/16 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.112.0.0/13 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.80.0.0/12 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.74.0.0/15 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.125.0.0/17 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 40.120.0.0/14 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 40.76.0.0/14 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 40.96.0.0/12 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 40.124.0.0/16 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 40.112.0.0/13 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 40.80.0.0/12 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 40.74.0.0/15 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 40.125.0.0/17 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 207.46.0.0/16 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 207.46.0.0/16 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 157.54.0.0/15 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 157.54.0.0/15 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 157.56.0.0/14 -p tcp -m tcp --dport 80 -j DROP
+	iptables -A INPUT -s 157.56.0.0/14 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 157.60.0.0/16 -p tcp -m tcp --dport 443 -j DROP
+	iptables -A INPUT -s 157.60.0.0/16 -p tcp -m tcp --dport 80 -j DROP
 
 	iptables -A INPUT -i eth0 -p icmp -j ACCEPT
 
-
 	iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
 	iptables -A OUTPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+	if [ "$ISVZ" = "False" ]; then
+		exec 2>>/var/log/Build.log #Special Error Log for xtable If any error while enabling Iptable GEOIP rules, check this log.
+		apt-get install iptables iptables-dev module-assistant xtables-addons-common libtext-csv-xs-perl unzip build-essential -y -q
+		module-assistant auto-install xtables-addons -i -q -n
 
-	iptables -A INPUT -m geoip --source-country RU,CN,UA,TW,TR,SK,RO,PL,CZ,BG  -j DROP #Blocking potential botnet zone (No offense intended if you live here, but it's my client policy...)
+		cd /usr/lib/xtables-addons/
+		sed -i "s/wget/wget -q/g" /usr/lib/xtables-addons/xt_geoip_dl
+		sed -i "s/unzip/unzip -q/g" /usr/lib/xtables-addons/xt_geoip_dl
+		sed -i "s/gzip/gzip -q/g" /usr/lib/xtables-addons/xt_geoip_dl
+		./xt_geoip_dl
+		./xt_geoip_build GeoIPCountryWhois.csv
+		mkdir -p /usr/share/xt_geoip/
+		cp -r {BE,LE} /usr/share/xt_geoip/
+		exec 2>>/var/log/postinstall.log #Back to normal Log
+		iptables -A INPUT -m geoip --source-country RU,CN,UA,TW,TR,SK,RO,PL,CZ,BG  -j DROP #Blocking potential botnet zone (No offense intended if you live here...)
 
-for ipok in $(cat $WHITE)
-	do
-	iptables -A INPUT -s "$ipok" -j ACCEPT
-	iptables -A OUTPUT -d "$ipok" -j ACCEPT
-done
+	fi
 
 	iptables-save > /root/iptablesbkp
 
+	rm /etc/rc.local
 	echo "/sbin/iptables-restore < /root/iptablesbkp" >> /etc/rc.local
+	echo "exit 0" >> /etc/rc.local
 
 #Paquets installation
 	#Always installed Postfix & Rootkit Hunter
@@ -199,19 +235,109 @@ done
 				echo "Mysql user : root"  >> $dir/mail
 				echo "Mysql root Password : $mysqlpasswd"  >> $dir/mail
 				echo ""  >> $dir/mail
+				for mysqluser in $(cat $USERSMYSQL)
+					do
+
+						dbuser=$(echo "$mysqluser" | cut -d ":" -f1)
+						dbname=$(echo "$mysqluser" | cut -d ":" -f2)
+						dbuserpasswd=$(echo "$mysqluser" | cut -d ":" -f3)
+						allowhost=$(echo "$mysqluser" | cut -d ":" -f3)
+						if [ "$userpasswd" == "random" ]
+							then
+							openssl rand -base64 12 > $dir/userpasswd
+							userpasswd=$(cat $dir/userpasswd)
+						fi
+						cat > $dir/createdbuser.sql << EOF
+CREATE DATABASE $dbname IF NOT EXISTS;
+CREATE USER \'$dbuser\'@\'$allowhost\' IDENTIFIED BY \'$dbuserpasswd\';
+GRANT all ON prestashop.* TO \'$dbuser\'@\'$allowhost\';
+FLUSH PRIVILEGES;
+EOF
+
+						mysql -u root -p$mysqlpasswd < $dir/createdbpresta.sql
+						echo "MySQL user : $mysqluser" >> $dir/mail
+						echo "Database : $dbname" >> $dir/mail
+						echo "password : $dbuserpasswd" >> $dir/mail
+						echo "" >> $dir/mail
+					done
+					rm /etc/mysql/my.cnf
+					cat >> /etc/mysql/my.cnf << EOF
+[client]
+port		= 3306
+socket		= /var/run/mysqld/mysqld.sock
+[mysqld_safe]
+socket		= /var/run/mysqld/mysqld.sock
+nice		= 0
+[mysqld]
+user		= mysql
+pid-file	= /var/run/mysqld/mysqld.pid
+socket		= /var/run/mysqld/mysqld.sock
+port		= 3306
+basedir		= /usr
+datadir		= /var/lib/mysql/
+tmpdir		= /tmp
+lc-messages-dir	= /usr/share/mysql
+skip-external-locking
+bind-address		= 0.0.0.0
+key_buffer		= 64M
+max_allowed_packet	= 64M
+thread_stack		= 192K
+thread_cache_size       = 20
+myisam-recover         = BACKUP
+max_connections        = 4096
+table_cache            = 2048
+innodb_buffer_pool_size = 300M
+join_buffer_size = 512K
+tmp_table_size = 50M
+max_heap_table_size = 50M
+query_cache_limit	= 64M
+query_cache_size        = 256M
+log_error = /var/log/mysql/error.log
+expire_logs_days	= 10
+max_binlog_size         = 100M
+[mysqldump]
+quick
+quote-names
+max_allowed_packet	= 256M
+[mysql]
+[isamchk]
+key_buffer		= 256M
+!includedir /etc/mysql/conf.d/
+EOF
+
 			#----------------------------------#
 			#------------prestashop------------#
 			#----------------------------------#
 			elif [ "$paquet" = "prestashop1.6" ]
 			then
 			webserver=false
-				for server in $(cat $UTILS)
-				do
+
 					#If webserver nginx
-					if [ "$server" = "nginx" ]
+					if [ -d /etc/nginx ]
 						then
 						webserver=true
-						apt-get install zip -q -y
+						apt-get install zip php5-imagick php5-gd php5-mysql -q -y
+
+						if [ -s /etc/php5/mods-available/mcrypt.ini  ]; then
+							if [ -s /etc/php5/mods-enabled/mcrypt.ini ]; then
+								echo "mcrypt already enabled"
+							else
+								php5enmod mcrypt
+								echo "mcrypt enabled by Prestashop" >> $dir/mail
+								echo "" >> $dir/mail
+							fi
+						elif [ -s /etc/php5/conf.d/mcrypt.ini ]; then
+							ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
+							php5enmod mcrypt
+							echo "mcrypt symlinked & enabled by Prestashop" >> $dir/mail
+							echo "" >> $dir/mail
+						else
+							apt-get install -y -q php5-mcrypt
+							ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
+							php5enmod mcrypt
+							echo "mcrypt installed & symlinked & enabled by Prestashop" >> $dir/mail
+							echo "" >> $dir/mail
+						fi
 
 						mkdir -p $PRESTADIR
 						cd $PRESTADIR
@@ -224,11 +350,9 @@ done
 						# Prestashop mysql user creation
 						openssl rand -base64 12 > $dir/prestapasswd
 						prestapasswd=$(cat $dir/prestapasswd)
-
+						#Creating Database for pure-ftpd-mysql
+						#With user 'pureftpd', the password is randomly generated
 						cat > $dir/createdbpresta.sql << EOF
-
-#Creating Database for pure-ftpd-mysql
-#With user 'pureftpd', the password is randomly generated
 CREATE DATABASE prestashop;
 CREATE USER 'prestashop'@'localhost' IDENTIFIED BY '$prestapasswd';
 GRANT all ON prestashop.* TO 'prestashop'@'localhost';
@@ -236,6 +360,7 @@ FLUSH PRIVILEGES;
 EOF
 
 						mysql -u root -p$mysqlpasswd < $dir/createdbpresta.sql
+
 						echo "Mysql user for Prestashop : prestashop" >> $dir/mail
 						echo "Mysql Password for Prestashop : $prestapasswd"  >> $dir/mail
 						echo "" >> $dir/mail
@@ -248,15 +373,13 @@ server {
 	listen 0.0.0.0:80;
 
  	fastcgi_param  PHP_ADMIN_VALUE "open_basedir=$PRESTADIR";
-	access_log /var/log/80-access-stand-prive.com combined;
-	error_log /var/log/80-error-stand-prive.com warn;
+	access_log /var/log/80-access-$PRESTASHOPFQDN combined;
+	error_log /var/log/80-error-$PRESTASHOPFQDN warn;
 	log_not_found off;
-	expires max;
-	if_modified_since before;
-	client_body_buffer_size 1M;
-	client_header_buffer_size 1M;
-	client_max_body_size 3M;
-	large_client_header_buffers 1 2M;
+	client_body_buffer_size 10M;
+	client_header_buffer_size 10M;
+	client_max_body_size 30M;
+	large_client_header_buffers 1 20M;
 	client_body_timeout 10;
 	client_header_timeout 10;
 	keepalive_timeout 15;
@@ -288,7 +411,6 @@ server {
 	}
 	location ~ /\\. {
 		deny  all;
-		access_log  off;
 		log_not_found  off;
 	}
 
@@ -307,15 +429,13 @@ server {
 #	ssl_session_cache shared:SSL:10m;
 
  	fastcgi_param  PHP_ADMIN_VALUE "open_basedir=$PRESTADIR";
-	access_log /var/log/443-access-stand-prive.com combined;
-	error_log /var/log/443-error-stand-prive.com warn;
+	access_log /var/log/443-access-$PRESTASHOPFQDN combined;
+	error_log /var/log/443-error-$PRESTASHOPFQDN warn;
 	log_not_found off;
-	expires max;
-	if_modified_since before;
-	client_body_buffer_size 1M;
-	client_header_buffer_size 1M;
-	client_max_body_size 3M;
-	large_client_header_buffers 1 2M;
+	client_body_buffer_size 10M;
+	client_header_buffer_size 10M;
+	client_max_body_size 30M;
+	large_client_header_buffers 1 20M;
 	client_body_timeout 10;
 	client_header_timeout 10;
 	keepalive_timeout 15;
@@ -347,7 +467,6 @@ server {
 	}
 	location ~ /\\. {
 		deny  all;
-		access_log  off;
 		log_not_found  off;
 	}
 
@@ -355,17 +474,19 @@ server {
 
 EOF
 							ln -s /etc/nginx/sites-available/$PRESTASHOPFQDN.serverblock /etc/nginx/sites-enabled/$PRESTASHOPFQDN.serverblock
-							rm /etc/nginx/sites-enabled/default
+							if [ -s /etc/nginx/sites-enabled/default ]; then
+								rm /etc/nginx/sites-enabled/default
+							fi
 
 							service nginx restart
 
-						elif [ "$server" = "apache" ]
+						elif [ -d /etc/apache2 ]
 						then
 							echo "APACHE VHOST not supported yet" >> $dir/mail
 							webserver=true
 						fi
 
-				done
+
 
 				if [ "$webserver" = "false" ]
 					then
@@ -375,8 +496,157 @@ EOF
 			#----------------------------------#
 			#--------fin-prestashop------------#
 			#----------------------------------#
+			#----------------------------------#
+			#--------------COMPOSER------------#
+			#----------------------------------#
+			elif [ "$paquet" = "composer" ]
+				then
+
+				if [ -s /usr/local/bin/composer ]
+				then
+					echo "Composer already installed by another package" >> $dir/mail
+					echo "" >> $dir/mail
+				else
+					apt-get install curl php5-cli -y -q
+					curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
+				fi
+
+			#----------------------------------#
+			#---------------LARAVEL------------#
+			#----------------------------------#
+			elif [ "$paquet" = "laravel" ]
+				then
+				webserver=false
+					if [ -d /etc/nginx ] #If webserver is nginx
+					then
+						webserver=true
+
+						mkdir -p $LARAVELDIR
+						chown 33:33 -R $LARAVELDIR
+						chmod 755 -R $LARAVELDIR
+						# laravel mysql user creation
+						openssl rand -base64 12 > $dir/laravelpasswd
+						laravelpasswd=$(cat $dir/laravelpasswd)
+
+						cat > $dir/createdblaravel.sql << EOF
+
+CREATE DATABASE laravel;
+CREATE USER 'laravel'@'localhost' IDENTIFIED BY '$laravelpasswd';
+GRANT all ON laravel.* TO 'laravel'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+						mysql -u root -p$mysqlpasswd < $dir/createdblaravel.sql
+						echo "Mysql user for laravel : laravel" >> $dir/mail
+						echo "Mysql Password for laravel : $laravelpasswd"  >> $dir/mail
+						echo "" >> $dir/mail
+
+cat >> /etc/nginx/sites-available/$LARAVELFQDN.serverblock << EOF
+server {
+server_name $LARAVELFQDN;
+root $LARAVELDIR;
+index index.php;
+listen 0.0.0.0;
+#	ssl    on;
+#	ssl_certificate PATH_TO_CRT;
+#	ssl_certificate_key PATH_TO_key;
+#	ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:ECDHE-RSA-AES128-GCM-SHA256:AES256+EECDH:DHE-RSA-AES128-GCM-SHA256:AES256+EDH:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA:ECDHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES256-GCM-SHA384:AES128-GCM-SHA256:AES256-SHA256:AES128-SHA256:AES256-SHA:AES128-SHA:DES-CBC3-SHA:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!MD5:!PSK:!RC4";
+#	ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+#	ssl_prefer_server_ciphers on;
+#	ssl_session_cache shared:SSL:10m;
+
+fastcgi_param  PHP_ADMIN_VALUE "open_basedir=$LARAVELDIR";
+access_log /var/log/access-$LARAVELFQDN combined;
+error_log /var/log/error-$LARAVELFQDN warn;
+log_not_found off;
+expires max;
+if_modified_since before;
+client_body_buffer_size 10M;
+client_header_buffer_size 10M;
+client_max_body_size 30M;
+large_client_header_buffers 1 20M;
+client_body_timeout 10;
+client_header_timeout 10;
+keepalive_timeout 15;
+send_timeout 5;
+fastcgi_buffers 256 256k;
+fastcgi_buffer_size 512k;
+
+location / {
+	try_files \$uri \$uri/ /index.php?\$args;
+}
+location ~ \\.php$ {
+	try_files \$uri /index.php =404;
+	fastcgi_index index.php;
+	fastcgi_pass unix:/var/run/php5-fpm.sock;
+	fastcgi_split_path_info ^(.+\\.php)(/.+)$;
+	include /etc/nginx/fastcgi_params;
+}
+location ~ /\\. {
+	deny  all;
+	access_log  off;
+	log_not_found  off;
+}
+
+}
+
+EOF
+							ln -s /etc/nginx/sites-available/$LARAVELFQDN.serverblock /etc/nginx/sites-enabled/$LARAVELFQDN.serverblock
+							if [ -s /etc/nginx/sites-enabled/default ]; then
+								rm /etc/nginx/sites-enabled/default
+							fi
+
+							service nginx restart
+
+						elif [ -d /etc/apache2 ] #if web server is Apache2
+							then
+							echo "APACHE not supported yet" >> $dir/mail
+							webserver=true
+						fi
+
+					if [ "$webserver" = "false" ] # if nor Nginx nor Apache2
+						then
+						echo "Please Install a webserver in order to use laravel" >> $dir/mail
+						echo "Although it was installed as asked" >> $dir/mail
+						echo "" >> $dir/mail
+					fi
+					if [ -s /etc/php5/mods-available/mcrypt.ini  ]; then
+						if [ -s /etc/php5/mods-enabled/mcrypt.ini ]; then
+							echo "mcrypt already enabled"
+						else
+							php5enmod mcrypt
+							echo "mcrypt enabled by Laravel" >> $dir/mail
+							echo "" >> $dir/mail
+						fi
+					elif [ -s /etc/php5/conf.d/mcrypt.ini ]; then
+						ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
+						php5enmod mcrypt
+						echo "mcrypt symlinked & enabled by Laravel" >> $dir/mail
+						echo "" >> $dir/mail
+					else
+						apt-get install -y -q php5-mcrypt
+						ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
+						php5enmod mcrypt
+						echo "mcrypt installed & symlinked & enabled by Laravel" >> $dir/mail
+						echo "" >> $dir/mail
+					fi
+					service php5-fpm restart
+					if [ -s /usr/local/bin/composer ]
+					then
+						composer create-project laravel/laravel $LARAVELDIR "~5.0.0" --prefer-dist -q
+					else
+						apt-get install curl php5-cli -y -q
+						curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
+						composer create-project laravel/laravel $LARAVELDIR "~5.0.0" --prefer-dist -q
+						echo "Composer was needed by $paquet, so it was installed" >> $dir/mail
+						echo "" >> $dir/mail
+					fi
+					chown 33:33 -R $LARAVELDIR
+					chmod 755 -R $LARAVELDIR
+
 			else
-				#installation du paquet
+				#----------------------------------#
+				#---------------AUTRE--------------#
+				#----------------------------------#
 				apt-get install $paquet -y -q
 			fi
 		done
@@ -393,7 +663,6 @@ EOF
 
 					rm /etc/php5/fpm/php.ini
 					cat >> /etc/php5/fpm/php.ini << EOF
-
 [PHP]
 engine = On
 short_open_tag = Off
@@ -409,8 +678,9 @@ zend.enable_gc = On
 expose_php = Off
 max_execution_time = 60
 max_input_time = 60
-memory_limit = 256M
-error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
+max_input_vars = 20000
+memory_limit = 2048M
+error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT & ~E_NOTICE
 display_errors = Off
 display_startup_errors = Off
 log_errors = On
@@ -485,7 +755,7 @@ session.name = PHPSESSID
 session.auto_start = 0
 session.cookie_lifetime = 0
 session.cookie_path = /
-languages such as JavaScript.
+#languages such as JavaScript.
 session.serialize_handler = php
 session.gc_probability = 0
 session.gc_divisor = 1000
@@ -507,7 +777,7 @@ soap.wsdl_cache_ttl=86400
 soap.wsdl_cache_limit = 5
 [opcache]
 opcache.enable=1
-opcache.memory_consumption=512
+opcache.memory_consumption=1024
 opcache.interned_strings_buffer=4
 opcache.max_accelerated_files=5000
 opcache.use_cwd=1
@@ -516,42 +786,66 @@ opcache.revalidate_freq=60
 opcache.save_comments=0
 opcache.load_comments=0
 opcache.fast_shutdown=1
-
 EOF
 
 service php5-fpm restart
 
 					;;
 
+				"php5-mcrypt")
+						if [ -s /etc/php5/mods-available/mcrypt.ini  ]; then
+							if [ -s /etc/php5/mods-enabled/mcrypt.ini ]; then
+								echo "mcrypt already enabled"
+							else
+								php5enmod mcrypt
+							fi
+						else
+							ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
+							php5enmod mcrypt
+						fi
+						service php5-fpm restart
+
+					;;
+
 			"nginx")
 
+
 				# Nginx Setup
-			rm /etc/nginx/nginx.conf
-cat >> /etc/nginx/nginx.conf << EOF
-	user www-data;
-	worker_processes 4;
-	pid /run/nginx.pid;
+					rm /etc/nginx/nginx.conf
+					cat >> /etc/nginx/nginx.conf << EOF
+user www-data;
+worker_processes $halfcpucores;
+pid /run/nginx.pid;
 
-	events {
-		worker_connections 768;
-	}
-	http {
+events {
+  worker_connections 16384;
+	multi_accept on;
+	use epoll;
+}
+http {
+  sendfile on;
+  tcp_nopush on;
+  tcp_nodelay on;
+  keepalive_timeout 15;
+  types_hash_max_size 2048;
+  include /etc/nginx/mime.types;
+  default_type application/octet-stream;
+  access_log /var/log/nginx/access.log;
+  error_log /var/log/nginx/error.log;
+  gzip on;
+  gzip_disable "msie6";
+  gzip_min_length 10240;
+  fastcgi_cache_path /var/cache/nginx levels=1:2 keys_zone=nginxcache:10m inactive=1h max_size=1g;
+  include /etc/nginx/conf.d/*.conf;
+  include /etc/nginx/sites-enabled/*;
+  open_file_cache          max=20000 inactive=20s;
+  open_file_cache_valid    30s;
+  open_file_cache_min_uses 2;
+  open_file_cache_errors   on;
+  reset_timedout_connection on;
+	server_tokens off;
+}
 
-		sendfile on;
-		tcp_nopush on;
-		tcp_nodelay on;
-		keepalive_timeout 65;
-		types_hash_max_size 2048;
-		include /etc/nginx/mime.types;
-		default_type application/octet-stream;
-		access_log /var/log/nginx/access.log;
-		error_log /var/log/nginx/error.log;
-		gzip on;
-		gzip_disable "msie6";
-		fastcgi_cache_path /var/cache/nginx levels=1:2 keys_zone=nginxcache:10m inactive=1h max_size=1g;
-		include /etc/nginx/conf.d/*.conf;
-		include /etc/nginx/sites-enabled/*;
-	}
 
 EOF
 				cat >> serverblock.example << EOF
@@ -560,6 +854,21 @@ server {
     server_name www.example.com;
     root /example/directory/;
     index index.html index.php;
+
+		fastcgi_param  PHP_ADMIN_VALUE "open_basedir=/PATH/TO/WEB/DIR";
+		access_log /var/log/80-access-WEBSITEFQDN combined;
+		error_log /var/log/80-error-WEBSITEFQDN warn;
+		log_not_found off;
+		client_body_buffer_size 10M;
+		client_header_buffer_size 10M;
+		client_max_body_size 30M;
+		large_client_header_buffers 1 20M;
+		client_body_timeout 10;
+		client_header_timeout 10;
+		keepalive_timeout 15;
+		send_timeout 5;
+		fastcgi_buffers 256 256k;
+		fastcgi_buffer_size 512k;
 
     location ~ \\.php$
     {
@@ -571,7 +880,8 @@ server {
 }
 
 EOF
-
+echo "(www-data soft nofile 65535)" >> /etc/security/limits.conf
+echo "www-data hard nofile 65535" >> /etc/security/limits.conf
 				service nginx restart
 
 				;;
@@ -579,7 +889,6 @@ EOF
 				"monit")
 
 					# Monit Setup
-
 					rm /etc/monit/monitrc
 					cat >> /etc/monit/monitrc << EOF
 set alert $MONITRECIPIENT
@@ -603,15 +912,15 @@ allow $MONITSERVER
 allow $MONITUSER:$MONITPASSWORD
 include /etc/monit/conf.d/*
 check system \$HOST
-	if loadavg (5min) > 8 then alert
-	if loadavg (15min) > 6 then alert
+	if loadavg (5min) > $cpucores then alert
+	if loadavg (15min) > $halfcpucores then alert
 	if memory usage > 80% for 4 cycles then alert
-	if cpu(system) is greater than 400% for 5 cycles then alert
-	if cpu(user) is greater than 400% for 5 cycles then alert
-	if cpu(wait) is greater than 400% for 5 cycles then alert
-	if cpu(system) is greater than 800% for 5 cycles then alert
-	if cpu(user) is greater than 800% for 5 cycles then alert
-	if cpu(wait) is greater than 800% for 5 cycles then alert
+	if cpu(system) is greater than ${halfcpucores}00% for 5 cycles then alert
+	if cpu(user) is greater than ${halfcpucores}00% for 5 cycles then alert
+	if cpu(wait) is greater than ${halfcpucores}00% for 5 cycles then alert
+	if cpu(system) is greater than ${cpucores}00% for 5 cycles then alert
+	if cpu(user) is greater than ${cpucores}00% for 5 cycles then alert
+	if cpu(wait) is greater than ${cpucores}00% for 5 cycles then alert
 
 check process nginx with pidfile /var/run/nginx.pid
 	start program = "/etc/init.d/nginx start"
@@ -673,7 +982,7 @@ FLUSH PRIVILEGES;
 EOF
 
 					mysql -u root -p$mysqlpasswd < $dir/createdb.sql
-
+					echo "40110 40210" > /etc/pure-ftpd/conf/PassivePortRange
 					echo "yes" > /etc/pure-ftpd/conf/NoAnonymous
 					echo "/etc/pure-ftpd/db/mysql.conf" > /etc/pure-ftpd/conf/MySQLConfigFile
 					echo "yes" > /etc/pure-ftpd/conf/CreateHomeDir
@@ -684,6 +993,10 @@ EOF
 					echo "yes" > /etc/pure-ftpd/conf/DisplayDotFiles
 					echo "yes" > /etc/pure-ftpd/conf/VerboseLog
 
+					iptables -A INPUT -p tcp --match multiport --dports 40110:40210 -j ACCEPT
+					iptables -t filter -A INPUT -p tcp --dport 21 -j ACCEPT
+					iptables-save > /root/iptablesbkp
+
 					cat > /etc/pure-ftpd/db/mysql.conf << EOF
 
 MYSQLSocket      /var/run/mysqld/mysqld.sock
@@ -693,41 +1006,52 @@ MYSQLUser       pureftpd
 MYSQLPassword   $ftpdpasswd
 MYSQLDatabase   pureftpd
 MYSQLCrypt      md5
-MYSQLGetPW      SELECT Password FROM ftpd WHERE User=\"\\L\" AND status=\"1\" AND (ipaccess = \"*\" OR ipaccess LIKE \"\\R\")
-MYSQLGetUID     SELECT Uid FROM ftpd WHERE User=\"\\L\" AND status=\"1\" AND (ipaccess = \"*\" OR ipaccess LIKE \"\\R\")
-MYSQLGetGID     SELECT Gid FROM ftpd WHERE User=\"\\L\"AND status=\"1\" AND (ipaccess = \"*\" OR ipaccess LIKE \"\\R\")
-MYSQLGetDir     SELECT Dir FROM ftpd WHERE User=\"\\L\"AND status=\"1\" AND (ipaccess = \"*\" OR ipaccess LIKE \"\\R\")
-MySQLGetBandwidthUL SELECT ULBandwidth FROM ftpd WHERE User=\"\\L\"AND status=\"1\" AND (ipaccess = \"*\" OR ipaccess LIKE \"\\R\")
-MySQLGetBandwidthDL SELECT DLBandwidth FROM ftpd WHERE User=\"\\L\"AND status=\"1\" AND (ipaccess = \"*\" OR ipaccess LIKE \"\\R\")
-MySQLGetQTASZ   SELECT QuotaSize FROM ftpd WHERE User=\"\\L\"AND status=\"1\" AND (ipaccess = \"*\" OR ipaccess LIKE \"\\R\")
-MySQLGetQTAFS   SELECT QuotaFiles FROM ftpd WHERE User=\"\\L\"AND status=\"1\" AND (ipaccess = \"*\" OR ipaccess LIKE \"\\R\")
+MYSQLGetPW      SELECT Password FROM ftpd WHERE User="\\L" AND status="1" AND (ipaccess = "*" OR ipaccess LIKE "\\R")
+MYSQLGetUID     SELECT Uid FROM ftpd WHERE User="\\L" AND status="1" AND (ipaccess = "*" OR ipaccess LIKE "\\R")
+MYSQLGetGID     SELECT Gid FROM ftpd WHERE User="\\L"AND status="1" AND (ipaccess = "*" OR ipaccess LIKE "\\R")
+MYSQLGetDir     SELECT Dir FROM ftpd WHERE User="\\L"AND status="1" AND (ipaccess = "*" OR ipaccess LIKE "\\R")
+MySQLGetBandwidthUL SELECT ULBandwidth FROM ftpd WHERE User="\\L"AND status="1" AND (ipaccess = "*" OR ipaccess LIKE "\\R")
+MySQLGetBandwidthDL SELECT DLBandwidth FROM ftpd WHERE User="\\L"AND status="1" AND (ipaccess = "*" OR ipaccess LIKE "\\R")
+MySQLGetQTASZ   SELECT QuotaSize FROM ftpd WHERE User="\\L"AND status="1" AND (ipaccess = "*" OR ipaccess LIKE "\\R")
+MySQLGetQTAFS   SELECT QuotaFiles FROM ftpd WHERE User="\\L"AND status="1" AND (ipaccess = "*" OR ipaccess LIKE "\\R")
 EOF
 
 					/etc/init.d/pure-ftpd-mysql restart
-
-				wget -q https://raw.githubusercontent.com/cthulhuely/server-setup/$branch/scripts/insertftpduser.bash #Get ftp users creation script from my github
-				#Pour l'infra distribuée Get depuis le NAS (Don't Mind this comment)
-
-				echo "Mysql user for Pureftpd : pureftpd" >> $dir/mail
-				echo "Mysql Password for Pureftpd : $ftpdpasswd"  >> $dir/mail
-				#Creating FTP Users Defined in Declarations
-				for ftpuser in $(cat $USERSFTP)
-					do
-
-					user=$(echo "$ftpuser" | cut -d ":" -f1)
-					userdir=$(echo "$ftpuser" | cut -d ":" -f2)
-					userpasswd=$(echo "$ftpuser" | cut -d ":" -f3)
-					if [ "$userpasswd" == "random" ]
+					if [ -s $dir/scripts/insertftpduser.bash ]
 						then
-						openssl rand -base64 12 > $dir/userpasswd
-						userpasswd=$(cat $dir/userpasswd)
+							cp $dir/scripts/insertftpduser.bash
+					elif [ -s $dir/insertftpduser.bash ]
+						then
+							mkdir -p $dir/scripts
+							mv $dir/insertftpduser.bash $dir/scripts/insertftpduser.bash
+					else
+						mkdir -p $dir/scripts
+						cd $dir/scripts
+						wget -q https://raw.githubusercontent.com/cthulhuely/server-setup/$branch/scripts/insertftpduser.bash #Get ftp users creation script from my github
+						cd $dir
 					fi
-					bash insertftpduser.bash $user $userdir $userpasswd
-					echo "Pureftpd user : $user" >> $dir/mail
-					echo "$user homedir : $userdir" >> $dir/mail
-					echo "$user ftp password : $userpasswd" >> $dir/mail
-					echo "" >> $dir/mail
-				done
+
+
+					echo "Mysql user for Pureftpd : pureftpd" >> $dir/mail
+					echo "Mysql Password for Pureftpd : $ftpdpasswd"  >> $dir/mail
+					#Creating FTP Users Defined in Declarations
+					for ftpuser in $(cat $USERSFTP)
+						do
+
+						user=$(echo "$ftpuser" | cut -d ":" -f1)
+					userdir=$(echo "$ftpuser" | cut -d ":" -f2)
+						userpasswd=$(echo "$ftpuser" | cut -d ":" -f3)
+						if [ "$userpasswd" == "random" ]
+							then
+							openssl rand -base64 12 > $dir/userpasswd
+							userpasswd=$(cat $dir/userpasswd)
+						fi
+						bash $dir/scripts/insertftpduser.bash $user $userdir $userpasswd
+						echo "Pureftpd user : $user" >> $dir/mail
+						echo "$user homedir : $userdir" >> $dir/mail
+						echo "$user ftp password : $userpasswd" >> $dir/mail
+						echo "" >> $dir/mail
+					done
 				;;
 
 			esac
@@ -784,7 +1108,7 @@ EOF
 		cat /var/log/postinstall.log
 		cat /var/log/postinstall.log  >> $dir/mail
 		sendmail $EMAILRECIPIENT < $dir/mail
-		rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list
+		#rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list #Commented for offline test purposes
 		export DEBIAN_FRONTEND=dialog
 		exit 1
 	else
