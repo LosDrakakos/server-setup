@@ -58,10 +58,7 @@ EOF
 #IP Format xxx.xxx.xxx.xxx/xx
 
 cat >> $dir/white.list << EOF
-88.163.22.99/32
-90.63.178.63/32
-78.226.56.137/32
-51.254.129.104/32
+xxx.xxx.xxx.xxx/xx
 EOF
 
 #FTPUserTo create Automatically
@@ -241,27 +238,28 @@ EOF
 				for mysqluser in $(cat $USERSMYSQL)
 					do
 
-					dbuser=$(echo "$mysqluser" | cut -d ":" -f1)
-					dbname=$(echo "$mysqluser" | cut -d ":" -f2)
-					userpasswd=$(echo "$mysqluser" | cut -d ":" -f3)
-					allowhost=$(echo "$mysqluser" | cut -d ":" -f3)
-					if [ "$userpasswd" == "random" ]
-						then
-						openssl rand -base64 12 > $dir/userpasswd
-						userpasswd=$(cat $dir/userpasswd)
-					fi
-					cat > $dir/createdbuser.sql << EOF
+						dbuser=$(echo "$mysqluser" | cut -d ":" -f1)
+						dbname=$(echo "$mysqluser" | cut -d ":" -f2)
+						dbuserpasswd=$(echo "$mysqluser" | cut -d ":" -f3)
+						allowhost=$(echo "$mysqluser" | cut -d ":" -f3)
+						if [ "$userpasswd" == "random" ]
+							then
+							openssl rand -base64 12 > $dir/userpasswd
+							userpasswd=$(cat $dir/userpasswd)
+						fi
+						cat > $dir/createdbuser.sql << EOF
 CREATE DATABASE $dbname IF NOT EXISTS;
-CREATE USER '$dbuser'@'$allowhost' IDENTIFIED BY '$userpasswd';
-GRANT all ON prestashop.* TO '$dbuser'@'$allowhost';
+CREATE USER \'$dbuser\'@\'$allowhost\' IDENTIFIED BY \'$dbuserpasswd\';
+GRANT all ON prestashop.* TO \'$dbuser\'@\'$allowhost\';
 FLUSH PRIVILEGES;
 EOF
 
-					mysql -u root -p$mysqlpasswd < $dir/createdbpresta.sql
-					echo "MySQL user : $user" >> $dir/mail
-					echo "Database : $userdir" >> $dir/mail
-					echo "password : $userpasswd" >> $dir/mail
-					echo "" >> $dir/mail
+						mysql -u root -p$mysqlpasswd < $dir/createdbpresta.sql
+						echo "MySQL user : $mysqluser" >> $dir/mail
+						echo "Database : $dbname" >> $dir/mail
+						echo "password : $dbuserpasswd" >> $dir/mail
+						echo "" >> $dir/mail
+					done
 					rm /etc/mysql/my.cnf
 					cat >> /etc/mysql/my.cnf << EOF
 [client]
@@ -306,7 +304,7 @@ max_allowed_packet	= 256M
 key_buffer		= 256M
 !includedir /etc/mysql/conf.d/
 EOF
-				done
+
 			#----------------------------------#
 			#------------prestashop------------#
 			#----------------------------------#
@@ -1110,7 +1108,7 @@ EOF
 		cat /var/log/postinstall.log
 		cat /var/log/postinstall.log  >> $dir/mail
 		sendmail $EMAILRECIPIENT < $dir/mail
-		rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list
+		#rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list #Commented for offline test purposes
 		export DEBIAN_FRONTEND=dialog
 		exit 1
 	else
