@@ -113,12 +113,15 @@ EOF
 # Update&Upgrade
 #Sometimes there's issues with Digital Oceans Repo
 #Fell free to uncomment to use thoose instead (or just use any other repo you want
-#cat > /etc/apt/sources.list << EOF
-#deb http://fr.archive.ubuntu.com/ubuntu/ trusty main restricted universe multiverse
-#deb http://fr.archive.ubuntu.com/ubuntu/ trusty-security main restricted universe multiverse
-#deb http://fr.archive.ubuntu.com/ubuntu/ trusty-updates main restricted universe multiverse
-#EOF
+#Non-Free Repo are needed for making php5-fpm with apache2
+cat > /etc/apt/sources.list << EOF
+deb http://fr.archive.ubuntu.com/ubuntu/ trusty main restricted universe multiverse
+deb http://fr.archive.ubuntu.com/ubuntu/ trusty-security main restricted universe multiverse
+deb http://fr.archive.ubuntu.com/ubuntu/ trusty-updates main restricted universe multiverse
+EOF
 
+	apt-get install language-pack-fr
+	apt-get install language-pack-en
 	apt-get update -y
 
 # Upgrade
@@ -238,28 +241,28 @@ EOF
 				for mysqluser in $(cat $USERSMYSQL)
 					do
 
-						dbuser=$(echo "$mysqluser" | cut -d ":" -f1)
-						dbname=$(echo "$mysqluser" | cut -d ":" -f2)
-						dbuserpasswd=$(echo "$mysqluser" | cut -d ":" -f3)
-						allowhost=$(echo "$mysqluser" | cut -d ":" -f3)
-						if [ "$userpasswd" == "random" ]
-							then
-							openssl rand -base64 12 > $dir/userpasswd
-							userpasswd=$(cat $dir/userpasswd)
-						fi
-						cat > $dir/createdbuser.sql << EOF
+					dbuser=$(echo "$mysqluser" | cut -d ":" -f1)
+					dbname=$(echo "$mysqluser" | cut -d ":" -f2)
+					dbuserpasswd=$(echo "$mysqluser" | cut -d ":" -f3)
+					allowhost=$(echo "$mysqluser" | cut -d ":" -f4)
+					if [ "$dbuserpasswd" == "random" ]
+						then
+						openssl rand -base64 12 > $dir/dbuserpasswd
+						dbuserpasswd=$(cat $dir/dbuserpasswd)
+					fi
+					cat > $dir/createdbuser.sql << EOF
 CREATE DATABASE $dbname IF NOT EXISTS;
-CREATE USER \'$dbuser\'@\'$allowhost\' IDENTIFIED BY \'$dbuserpasswd\';
-GRANT all ON prestashop.* TO \'$dbuser\'@\'$allowhost\';
+CREATE USER '$dbuser'@'$allowhost' IDENTIFIED BY '$dbuserpasswd';
+GRANT all ON $dbname.* TO '$dbuser'@'$allowhost';
 FLUSH PRIVILEGES;
 EOF
 
-						mysql -u root -p$mysqlpasswd < $dir/createdbpresta.sql
-						echo "MySQL user : $mysqluser" >> $dir/mail
-						echo "Database : $dbname" >> $dir/mail
-						echo "password : $dbuserpasswd" >> $dir/mail
-						echo "" >> $dir/mail
-					done
+					mysql -u root -p$mysqlpasswd < $dir/createdbuser.sql
+					echo "MySQL user : $user" >> $dir/mail
+					echo "Database : $userdir" >> $dir/mail
+					echo "password : $userpasswd" >> $dir/mail
+					echo "" >> $dir/mail
+				done
 					rm /etc/mysql/my.cnf
 					cat >> /etc/mysql/my.cnf << EOF
 [client]
@@ -482,9 +485,93 @@ EOF
 
 						elif [ -d /etc/apache2 ]
 						then
-							echo "APACHE VHOST not supported yet" >> $dir/mail
-							webserver=true
+						webserver=true
+						apt-get install zip php5-imagick php5-gd php5-mysql -q -y
+
+						if [ -s /etc/php5/mods-available/mcrypt.ini  ]; then
+							if [ -s /etc/php5/mods-enabled/mcrypt.ini ]; then
+								echo "mcrypt already enabled"
+							else
+								php5enmod mcrypt
+								echo "mcrypt enabled by Prestashop" >> $dir/mail
+								echo "" >> $dir/mail
+							fi
+						elif [ -s /etc/php5/conf.d/mcrypt.ini ]; then
+							ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
+							php5enmod mcrypt
+							echo "mcrypt symlinked & enabled by Prestashop" >> $dir/mail
+							echo "" >> $dir/mail
+						else
+							apt-get install -y -q php5-mcrypt
+							ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
+							php5enmod mcrypt
+							echo "mcrypt installed & symlinked & enabled by Prestashop" >> $dir/mail
+							echo "" >> $dir/mail
 						fi
+
+						mkdir -p $PRESTADIR
+						cd $PRESTADIR
+						wget -q https://www.prestashop.com/download/old/prestashop_1.6.1.0.zip
+						unzip -q prestashop*.zip
+						mv prestashop/* ./
+						cd $dir
+						chown 33:33 -R $PRESTADIR
+						chmod 755 -R $PRESTADIR
+						# Prestashop mysql user creation
+						openssl rand -base64 12 > $dir/prestapasswd
+						prestapasswd=$(cat $dir/prestapasswd)
+						#Creating Database for pure-ftpd-mysql
+						#With user 'pureftpd', the password is randomly generated
+						cat > $dir/createdbpresta.sql << EOF
+CREATE DATABASE prestashop;
+CREATE USER 'prestashop'@'localhost' IDENTIFIED BY '$prestapasswd';
+GRANT all ON prestashop.* TO 'prestashop'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+
+						mysql -u root -p$mysqlpasswd < $dir/createdbpresta.sql
+
+						echo "Mysql user for Prestashop : prestashop" >> $dir/mail
+						echo "Mysql Password for Prestashop : $prestapasswd"  >> $dir/mail
+						echo "" >> $dir/mail
+
+cat >> /etc/apache2/sites-available/$PRESTASHOPFQDN.vhost << EOF
+<VirtualHost *:80>
+
+	ServerName $PRESTASHOPFQDN
+  ServerAdmin Dave.Null@Dave.Null
+  DocumentRoot $PRESTADIR
+  ErrorLog ${APACHE_LOG_DIR}/80-$PRESTASHOPFQDN-error.log
+  CustomLog ${APACHE_LOG_DIR}/80-$PRESTASHOPFQDN-access.log combined
+
+  <Directory /home/www/prestashop/>
+      Options FollowSymLinks Indexes MultiViews
+      AllowOverride All
+  </Directory>
+
+</VirtualHost>
+<VirtualHost *:443>
+	#SSLEngine On
+  #SSLCertificateFile /etc/ssl/localcerts/www.example.com.crt
+  #SSLCertificateKeyFile /etc/ssl/localcerts/www.example.com.key
+  #SSLCACertificateFile /etc/ssl/localcerts/ca.pem
+
+	ServerName $PRESTASHOPFQDN
+  ServerAdmin Dave.Null@Dave.Null
+  DocumentRoot $PRESTADIR
+  ErrorLog ${APACHE_LOG_DIR}/443-$PRESTASHOPFQDN-error.log
+  CustomLog ${APACHE_LOG_DIR}/443-$PRESTASHOPFQDN-access.log combined
+
+  <Directory /home/www/prestashop/>
+      Options FollowSymLinks Indexes MultiViews
+      AllowOverride All
+  </Directory>
+
+</VirtualHost>
+EOF
+							ln -s /etc/apache2/sites-available/$PRESTASHOPFQDN.vhost /etc/apache2/sites-enabled/$PRESTASHOPFQDN.vhost
+							service apache2 restart
+				fi
 
 
 
@@ -510,7 +597,95 @@ EOF
 					apt-get install curl php5-cli -y -q
 					curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
 				fi
+				#----------------------------------#
+				#--------------APACHE2------------#
+				#----------------------------------#
+			elif [ "$paquet" = "apache2" ]
+					then
+					apt-get install apache2 apache2-utils -y -q
+					rm /etc/apache2/apache2.conf
+					cat >> /etc/apache2/apache2.conf << EOF
+Mutex file:\${APACHE_LOCK_DIR} default
+PidFile \${APACHE_PID_FILE}
+ServerSignature Off
+Timeout 300
+KeepAlive On
+MaxKeepAliveRequests 100
+KeepAliveTimeout 5
+User \${APACHE_RUN_USER}
+Group \${APACHE_RUN_GROUP}
+HostnameLookups Off
+ErrorLog \${APACHE_LOG_DIR}/error.log
+LogLevel warn
+IncludeOptional mods-enabled/*.load
+IncludeOptional mods-enabled/*.conf
+Include ports.conf
+<Directory />
+	Options FollowSymLinks
+	AllowOverride None
+	Require all granted
+</Directory>
 
+<Directory /usr/share>
+	AllowOverride None
+	Require all granted
+</Directory>
+
+<Directory /var/www/>
+	Options Indexes FollowSymLinks
+	AllowOverride None
+	Require all granted
+</Directory>
+AccessFileName .htaccess
+<FilesMatch "^\.ht">
+	Require all denied
+</FilesMatch>
+LogFormat "%v:%p %h %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\"" vhost_combined
+LogFormat "%h %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\"" combined
+LogFormat "%h %l %u %t \"%r\" %>s %O" common
+LogFormat "%{Referer}i -> %U" referer
+LogFormat "%{User-agent}i" agent
+IncludeOptional conf-enabled/*.conf
+IncludeOptional sites-enabled/*.conf
+
+# vim: syntax=apache ts=4 sw=4 sts=4 sr noet
+EOF
+				rm /etc/apache2/mods-available/mpm_prefork.conf
+				cat >> /etc/apache2/mods-available/mpm_prefork.conf << EOF
+<IfModule mpm_prefork_module>
+  StartServers              $halfcpucores
+  MinSpareServers           6
+  MaxSpareServers           50
+  MaxRequestWorkers         120
+  MaxConnectionsPerChild    3000
+</IfModule>
+EOF
+
+				a2dismod mpm_event
+				a2enmod mpm_prefork
+				a2enmod rewrite
+
+				a2dissite 000-default.conf
+
+				apt-get install libapache2-mod-fastcgi php5-fpm -y -q
+
+				cat >> /etc/apache2/conf-available/php5-fpm.conf << EOF
+<IfModule mod_fastcgi.c>
+
+	AddHandler php5-fcgi .php
+	Action php5-fcgi /php5-fcgi
+	Alias /php5-fcgi /usr/lib/cgi-bin/php5-fcgi
+	FastCgiExternalServer /usr/lib/cgi-bin/php5-fcgi -socket /var/run/php5-fpm.sock -pass-header Authorization
+
+	<Directory /usr/lib/cgi-bin>
+  	Require all granted
+	</Directory>
+
+</IfModule>
+EOF
+				a2enmod actions fastcgi alias
+				a2enconf php5-fpm
+				service apache2 restart
 			#----------------------------------#
 			#---------------LARAVEL------------#
 			#----------------------------------#
@@ -661,6 +836,8 @@ EOF
 
 					# PHP5-FPM Setup
 
+					apt-get install php5-imagick php5-gd php5-mcrypt php5-mysql -y -q
+
 					rm /etc/php5/fpm/php.ini
 					cat >> /etc/php5/fpm/php.ini << EOF
 [PHP]
@@ -755,7 +932,6 @@ session.name = PHPSESSID
 session.auto_start = 0
 session.cookie_lifetime = 0
 session.cookie_path = /
-#languages such as JavaScript.
 session.serialize_handler = php
 session.gc_probability = 0
 session.gc_divisor = 1000
@@ -880,6 +1056,12 @@ server {
 }
 
 EOF
+cat >> /etc/monit/monitrc << EOF
+check process nginx with pidfile /var/run/nginx.pid
+	start program = "/etc/init.d/nginx start"
+	stop program  = "/etc/init.d/nginx stop"
+	group www-data
+EOF
 echo "(www-data soft nofile 65535)" >> /etc/security/limits.conf
 echo "www-data hard nofile 65535" >> /etc/security/limits.conf
 				service nginx restart
@@ -922,10 +1104,10 @@ check system \$HOST
 	if cpu(user) is greater than ${cpucores}00% for 5 cycles then alert
 	if cpu(wait) is greater than ${cpucores}00% for 5 cycles then alert
 
-check process nginx with pidfile /var/run/nginx.pid
-	start program = "/etc/init.d/nginx start"
-	stop program  = "/etc/init.d/nginx stop"
-	group www-data
+#check process nginx with pidfile /var/run/nginx.pid
+#	start program = "/etc/init.d/nginx start"
+#	stop program  = "/etc/init.d/nginx stop"
+#	group www-data
 
 check process syslogd with pidfile /var/run/rsyslogd.pid
 	start program = "/etc/init.d/rsyslog start"
@@ -1108,14 +1290,14 @@ EOF
 		cat /var/log/postinstall.log
 		cat /var/log/postinstall.log  >> $dir/mail
 		sendmail $EMAILRECIPIENT < $dir/mail
-		#rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list #Commented for offline test purposes
+		#rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list
 		export DEBIAN_FRONTEND=dialog
 		exit 1
 	else
 		echo 'Fin du script sans erreurs \o/' >> /var/log/postinstall.log
 		cat /var/log/postinstall.log  >> $dir/mail
 		sendmail $EMAILRECIPIENT < $dir/mail
-		rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list
+		#rm $dir/createdb.sql $dir/mail $dir/mysqlpasswd $dir/utilities.list $dir/white.list $dir/usersftp.list
 		export DEBIAN_FRONTEND=dialog
 		exit 0
 	fi
