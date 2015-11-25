@@ -85,6 +85,7 @@ EOF
 #----- FIN DECLARATIONS -----#
 ##############################
 
+
 	echo "subject : $hostn Postinstall Report" > $dir/mail
 # Getting CPU cpucores number
 	cpucores=$(grep processor /proc/cpuinfo | wc -l)
@@ -212,32 +213,37 @@ EOF
 	echo "exit 0" >> /etc/rc.local
 
 #Paquets installation
+
 	#Always installed Postfix & Rootkit Hunter
 	echo "postfix postfix/main_mailer_type select Internet Site" | debconf-set-selections # Postfix Preinstall setup
 	echo "postfix postfix/mailname string $hostn" | debconf-set-selections
+
 	apt-get install rkhunter postfix openssl -y -q
-		echo "" >> $dir/mail
-		echo "Paquets installés" >> $dir/mail
-		echo "" >> $dir/mail
-		for paquet in $(cat $UTILS)
+
+	echo "" >> $dir/mail
+	echo "Paquets installés" >> $dir/mail
+	echo "" >> $dir/mail
+
+	for paquet in $(cat "$UTILS")
 		do
-			echo "$paquet" >> $dir/mail
+			case "$paquet" in
+#MYSQL
+			"mysql-server")
 
-			#MYSQL PreInstall & Install
+				#Mysql Passwd gen
+				openssl rand -base64 12 | sed 's/\/=//g' > $dir/mysqlpasswd
+				mysqlpasswd=$(cat "$dir/mysqlpasswd")
+				echo "mysql-server mysql-server/root_password password $mysqlpasswd" | debconf-set-selections
+				echo "mysql-server mysql-server/root_password_again password $mysqlpasswd" | debconf-set-selections
 
-			if [ "$paquet" = "mysql-server" ]
-			then
-					#Mysql Passwd gen
-					openssl rand -base64 12 | sed 's/\/=//g' > $dir/mysqlpasswd
-					mysqlpasswd=$(cat "$dir/mysqlpasswd")
-					echo "mysql-server mysql-server/root_password password $mysqlpasswd" | debconf-set-selections
-					echo "mysql-server mysql-server/root_password_again password $mysqlpasswd" | debconf-set-selections
-					#Install
-					apt-get install mysql-server -y -q
+				#Install
+				apt-get install mysql-server -y -q
 
 				echo "Mysql user : root"  >> $dir/mail
 				echo "Mysql root Password : $mysqlpasswd"  >> $dir/mail
 				echo ""  >> $dir/mail
+
+				#Creating mysql as asked in declaration
 				for mysqluser in $(cat $USERSMYSQL)
 					do
 
@@ -250,6 +256,7 @@ EOF
 						openssl rand -base64 12 > $dir/dbuserpasswd
 						dbuserpasswd=$(cat $dir/dbuserpasswd)
 					fi
+
 					cat > $dir/createdbuser.sql << EOF
 CREATE DATABASE $dbname IF NOT EXISTS;
 CREATE USER '$dbuser'@'$allowhost' IDENTIFIED BY '$dbuserpasswd';
@@ -257,12 +264,12 @@ GRANT all ON $dbname.* TO '$dbuser'@'$allowhost';
 FLUSH PRIVILEGES;
 EOF
 
-					mysql -u root -p$mysqlpasswd < $dir/createdbuser.sql
-					echo "MySQL user : $user" >> $dir/mail
-					echo "Database : $userdir" >> $dir/mail
-					echo "password : $userpasswd" >> $dir/mail
-					echo "" >> $dir/mail
-				done
+						mysql -u root -p$mysqlpasswd < $dir/createdbuser.sql
+						echo "MySQL user : $user" >> $dir/mail
+						echo "Database : $userdir" >> $dir/mail
+						echo "password : $userpasswd" >> $dir/mail
+						echo "" >> $dir/mail
+					done
 					rm /etc/mysql/my.cnf
 					cat >> /etc/mysql/my.cnf << EOF
 [client]
@@ -308,65 +315,17 @@ key_buffer		= 256M
 !includedir /etc/mysql/conf.d/
 EOF
 
-			#----------------------------------#
-			#------------prestashop------------#
-			#----------------------------------#
-			elif [ "$paquet" = "prestashop1.6" ]
-			then
+			;;
+#PRESTASHOP
+			"prestashop1.6")
+
 			webserver=false
 
 					#If webserver nginx
 					if [ -d /etc/nginx ]
 						then
 						webserver=true
-						apt-get install zip php5-imagick php5-gd php5-mysql -q -y
 
-						if [ -s /etc/php5/mods-available/mcrypt.ini  ]; then
-							if [ -s /etc/php5/mods-enabled/mcrypt.ini ]; then
-								echo "mcrypt already enabled"
-							else
-								php5enmod mcrypt
-								echo "mcrypt enabled by Prestashop" >> $dir/mail
-								echo "" >> $dir/mail
-							fi
-						elif [ -s /etc/php5/conf.d/mcrypt.ini ]; then
-							ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
-							php5enmod mcrypt
-							echo "mcrypt symlinked & enabled by Prestashop" >> $dir/mail
-							echo "" >> $dir/mail
-						else
-							apt-get install -y -q php5-mcrypt
-							ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
-							php5enmod mcrypt
-							echo "mcrypt installed & symlinked & enabled by Prestashop" >> $dir/mail
-							echo "" >> $dir/mail
-						fi
-
-						mkdir -p $PRESTADIR
-						cd $PRESTADIR
-						wget -q https://www.prestashop.com/download/old/prestashop_1.6.1.0.zip
-						unzip -q prestashop*.zip
-						mv prestashop/* ./
-						cd $dir
-						chown 33:33 -R $PRESTADIR
-						chmod 755 -R $PRESTADIR
-						# Prestashop mysql user creation
-						openssl rand -base64 12 > $dir/prestapasswd
-						prestapasswd=$(cat $dir/prestapasswd)
-						#Creating Database for pure-ftpd-mysql
-						#With user 'pureftpd', the password is randomly generated
-						cat > $dir/createdbpresta.sql << EOF
-CREATE DATABASE prestashop;
-CREATE USER 'prestashop'@'localhost' IDENTIFIED BY '$prestapasswd';
-GRANT all ON prestashop.* TO 'prestashop'@'localhost';
-FLUSH PRIVILEGES;
-EOF
-
-						mysql -u root -p$mysqlpasswd < $dir/createdbpresta.sql
-
-						echo "Mysql user for Prestashop : prestashop" >> $dir/mail
-						echo "Mysql Password for Prestashop : $prestapasswd"  >> $dir/mail
-						echo "" >> $dir/mail
 
 cat >> /etc/nginx/sites-available/$PRESTASHOPFQDN.serverblock << EOF
 server {
@@ -486,7 +445,53 @@ EOF
 						elif [ -d /etc/apache2 ]
 						then
 						webserver=true
-						apt-get install zip php5-imagick php5-gd php5-mysql -q -y
+
+						cat >> /etc/apache2/sites-available/$PRESTASHOPFQDN.vhost << EOF
+<VirtualHost *:80>
+
+	ServerName $PRESTASHOPFQDN
+  ServerAdmin Dave.Null@Dave.Null
+  DocumentRoot $PRESTADIR
+  ErrorLog ${APACHE_LOG_DIR}/80-$PRESTASHOPFQDN-error.log
+  CustomLog ${APACHE_LOG_DIR}/80-$PRESTASHOPFQDN-access.log combined
+
+  <Directory /home/www/prestashop/>
+      Options FollowSymLinks Indexes MultiViews
+      AllowOverride All
+  </Directory>
+
+</VirtualHost>
+<VirtualHost *:443>
+	#SSLEngine On
+  #SSLCertificateFile /etc/ssl/localcerts/www.example.com.crt
+  #SSLCertificateKeyFile /etc/ssl/localcerts/www.example.com.key
+  #SSLCACertificateFile /etc/ssl/localcerts/ca.pem
+
+	ServerName $PRESTASHOPFQDN
+  ServerAdmin Dave.Null@Dave.Null
+  DocumentRoot $PRESTADIR
+  ErrorLog ${APACHE_LOG_DIR}/443-$PRESTASHOPFQDN-error.log
+  CustomLog ${APACHE_LOG_DIR}/443-$PRESTASHOPFQDN-access.log combined
+
+  <Directory /home/www/prestashop/>
+      Options FollowSymLinks Indexes MultiViews
+      AllowOverride All
+  </Directory>
+
+</VirtualHost>
+EOF
+							ln -s /etc/apache2/sites-available/$PRESTASHOPFQDN.vhost /etc/apache2/sites-enabled/$PRESTASHOPFQDN.vhost
+							service apache2 restart
+				fi
+
+
+
+				if [ "$webserver" = "false" ]
+					then
+					echo "Please Install a webserver in order to install Prestashop" >> $dir/mail
+					echo "" >> $dir/mail
+				else
+					apt-get install zip php5-imagick php5-gd php5-mysql -q -y
 
 						if [ -s /etc/php5/mods-available/mcrypt.ini  ]; then
 							if [ -s /etc/php5/mods-enabled/mcrypt.ini ]; then
@@ -534,60 +539,11 @@ EOF
 						echo "Mysql user for Prestashop : prestashop" >> $dir/mail
 						echo "Mysql Password for Prestashop : $prestapasswd"  >> $dir/mail
 						echo "" >> $dir/mail
-
-cat >> /etc/apache2/sites-available/$PRESTASHOPFQDN.vhost << EOF
-<VirtualHost *:80>
-
-	ServerName $PRESTASHOPFQDN
-  ServerAdmin Dave.Null@Dave.Null
-  DocumentRoot $PRESTADIR
-  ErrorLog ${APACHE_LOG_DIR}/80-$PRESTASHOPFQDN-error.log
-  CustomLog ${APACHE_LOG_DIR}/80-$PRESTASHOPFQDN-access.log combined
-
-  <Directory /home/www/prestashop/>
-      Options FollowSymLinks Indexes MultiViews
-      AllowOverride All
-  </Directory>
-
-</VirtualHost>
-<VirtualHost *:443>
-	#SSLEngine On
-  #SSLCertificateFile /etc/ssl/localcerts/www.example.com.crt
-  #SSLCertificateKeyFile /etc/ssl/localcerts/www.example.com.key
-  #SSLCACertificateFile /etc/ssl/localcerts/ca.pem
-
-	ServerName $PRESTASHOPFQDN
-  ServerAdmin Dave.Null@Dave.Null
-  DocumentRoot $PRESTADIR
-  ErrorLog ${APACHE_LOG_DIR}/443-$PRESTASHOPFQDN-error.log
-  CustomLog ${APACHE_LOG_DIR}/443-$PRESTASHOPFQDN-access.log combined
-
-  <Directory /home/www/prestashop/>
-      Options FollowSymLinks Indexes MultiViews
-      AllowOverride All
-  </Directory>
-
-</VirtualHost>
-EOF
-							ln -s /etc/apache2/sites-available/$PRESTASHOPFQDN.vhost /etc/apache2/sites-enabled/$PRESTASHOPFQDN.vhost
-							service apache2 restart
 				fi
 
+				;;
 
-
-				if [ "$webserver" = "false" ]
-					then
-					echo "Please Install a webserver in order to install Prestashop" >> $dir/mail
-					echo "" >> $dir/mail
-				fi
-			#----------------------------------#
-			#--------fin-prestashop------------#
-			#----------------------------------#
-			#----------------------------------#
-			#--------------COMPOSER------------#
-			#----------------------------------#
-			elif [ "$paquet" = "composer" ]
-				then
+				"composer")
 
 				if [ -s /usr/local/bin/composer ]
 				then
@@ -597,11 +553,11 @@ EOF
 					apt-get install curl php5-cli -y -q
 					curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
 				fi
-				#----------------------------------#
-				#--------------APACHE2------------#
-				#----------------------------------#
-			elif [ "$paquet" = "apache2" ]
-					then
+
+				;;
+
+				"apache2")
+
 					apt-get install apache2 apache2-utils -y -q
 					rm /etc/apache2/apache2.conf
 					cat >> /etc/apache2/apache2.conf << EOF
@@ -686,36 +642,17 @@ EOF
 				a2enmod actions fastcgi alias
 				a2enconf php5-fpm
 				service apache2 restart
-			#----------------------------------#
-			#---------------LARAVEL------------#
-			#----------------------------------#
-			elif [ "$paquet" = "laravel" ]
-				then
+
+				;;
+
+				"laravel")
+
 				webserver=false
 					if [ -d /etc/nginx ] #If webserver is nginx
 					then
 						webserver=true
 
-						mkdir -p $LARAVELDIR
-						chown 33:33 -R $LARAVELDIR
-						chmod 755 -R $LARAVELDIR
-						# laravel mysql user creation
-						openssl rand -base64 12 > $dir/laravelpasswd
-						laravelpasswd=$(cat $dir/laravelpasswd)
-
-						cat > $dir/createdblaravel.sql << EOF
-
-CREATE DATABASE laravel;
-CREATE USER 'laravel'@'localhost' IDENTIFIED BY '$laravelpasswd';
-GRANT all ON laravel.* TO 'laravel'@'localhost';
-FLUSH PRIVILEGES;
-EOF
-						mysql -u root -p$mysqlpasswd < $dir/createdblaravel.sql
-						echo "Mysql user for laravel : laravel" >> $dir/mail
-						echo "Mysql Password for laravel : $laravelpasswd"  >> $dir/mail
-						echo "" >> $dir/mail
-
-cat >> /etc/nginx/sites-available/$LARAVELFQDN.serverblock << EOF
+						cat >> /etc/nginx/sites-available/$LARAVELFQDN.serverblock << EOF
 server {
 server_name $LARAVELFQDN;
 root $LARAVELDIR;
@@ -781,62 +718,68 @@ EOF
 					if [ "$webserver" = "false" ] # if nor Nginx nor Apache2
 						then
 						echo "Please Install a webserver in order to use laravel" >> $dir/mail
-						echo "Although it was installed as asked" >> $dir/mail
 						echo "" >> $dir/mail
-					fi
-					if [ -s /etc/php5/mods-available/mcrypt.ini  ]; then
-						if [ -s /etc/php5/mods-enabled/mcrypt.ini ]; then
-							echo "mcrypt already enabled"
-						else
+					else #If a web server is installed
+						mkdir -p $LARAVELDIR
+						chown 33:33 -R $LARAVELDIR
+						chmod 755 -R $LARAVELDIR
+						# laravel mysql user creation
+						openssl rand -base64 12 > $dir/laravelpasswd
+						laravelpasswd=$(cat $dir/laravelpasswd)
+
+						cat > $dir/createdblaravel.sql << EOF
+
+CREATE DATABASE laravel;
+CREATE USER 'laravel'@'localhost' IDENTIFIED BY '$laravelpasswd';
+GRANT all ON laravel.* TO 'laravel'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+						mysql -u root -p$mysqlpasswd < $dir/createdblaravel.sql
+						echo "Mysql user for laravel : laravel" >> $dir/mail
+						echo "Mysql Password for laravel : $laravelpasswd"  >> $dir/mail
+						echo "" >> $dir/mail
+						if [ -s /etc/php5/mods-available/mcrypt.ini  ]; then
+							if [ -s /etc/php5/mods-enabled/mcrypt.ini ]; then
+								echo "mcrypt already enabled"
+							else
+								php5enmod mcrypt
+								echo "mcrypt enabled by Laravel" >> $dir/mail
+								echo "" >> $dir/mail
+							fi
+						elif [ -s /etc/php5/conf.d/mcrypt.ini ]; then
+							ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
 							php5enmod mcrypt
-							echo "mcrypt enabled by Laravel" >> $dir/mail
+							echo "mcrypt symlinked & enabled by Laravel" >> $dir/mail
+							echo "" >> $dir/mail
+						else
+							apt-get install -y -q php5-mcrypt
+							ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
+							php5enmod mcrypt
+							echo "mcrypt installed & symlinked & enabled by Laravel" >> $dir/mail
 							echo "" >> $dir/mail
 						fi
-					elif [ -s /etc/php5/conf.d/mcrypt.ini ]; then
-						ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
-						php5enmod mcrypt
-						echo "mcrypt symlinked & enabled by Laravel" >> $dir/mail
-						echo "" >> $dir/mail
-					else
-						apt-get install -y -q php5-mcrypt
-						ln -s /etc/php5/conf.d/mcrypt.ini /etc/php5/mods-available/mcrypt.ini
-						php5enmod mcrypt
-						echo "mcrypt installed & symlinked & enabled by Laravel" >> $dir/mail
-						echo "" >> $dir/mail
+						service php5-fpm restart
+						if [ -s /usr/local/bin/composer ]
+						then
+							composer create-project laravel/laravel $LARAVELDIR "~5.0.0" --prefer-dist -q
+						else
+							apt-get install curl php5-cli -y -q
+							curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
+							composer create-project laravel/laravel $LARAVELDIR "~5.0.0" --prefer-dist -q
+							echo "Composer was needed by $paquet, so it was installed" >> $dir/mail
+							echo "" >> $dir/mail
+						fi
+						chown 33:33 -R $LARAVELDIR
+						chmod 755 -R $LARAVELDIR
 					fi
-					service php5-fpm restart
-					if [ -s /usr/local/bin/composer ]
-					then
-						composer create-project laravel/laravel $LARAVELDIR "~5.0.0" --prefer-dist -q
-					else
-						apt-get install curl php5-cli -y -q
-						curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
-						composer create-project laravel/laravel $LARAVELDIR "~5.0.0" --prefer-dist -q
-						echo "Composer was needed by $paquet, so it was installed" >> $dir/mail
-						echo "" >> $dir/mail
-					fi
-					chown 33:33 -R $LARAVELDIR
-					chmod 755 -R $LARAVELDIR
 
-			else
-				#----------------------------------#
-				#---------------AUTRE--------------#
-				#----------------------------------#
-				apt-get install $paquet -y -q
-			fi
-		done
-	echo "" >> $dir/mail
-#Paquets SetUp
-	for paquet in $(cat "$UTILS")
-		do
-			case "$paquet" in
-
-				"php5-fpm")
+					;;
+					"php5-fpm")
 
 
 					# PHP5-FPM Setup
 
-					apt-get install php5-imagick php5-gd php5-mcrypt php5-mysql -y -q
+					apt-get install php5-fpm php5-imagick php5-gd php5-mcrypt php5-mysql -y -q
 
 					rm /etc/php5/fpm/php.ini
 					cat >> /etc/php5/fpm/php.ini << EOF
@@ -963,12 +906,6 @@ opcache.save_comments=0
 opcache.load_comments=0
 opcache.fast_shutdown=1
 EOF
-
-service php5-fpm restart
-
-					;;
-
-				"php5-mcrypt")
 						if [ -s /etc/php5/mods-available/mcrypt.ini  ]; then
 							if [ -s /etc/php5/mods-enabled/mcrypt.ini ]; then
 								echo "mcrypt already enabled"
@@ -982,13 +919,12 @@ service php5-fpm restart
 						service php5-fpm restart
 
 					;;
+					"nginx")
 
-			"nginx")
-
-
-				# Nginx Setup
-					rm /etc/nginx/nginx.conf
-					cat >> /etc/nginx/nginx.conf << EOF
+					apt-get install nginx -y -q
+					# Nginx Setup
+						rm /etc/nginx/nginx.conf
+						cat >> /etc/nginx/nginx.conf << EOF
 user www-data;
 worker_processes $halfcpucores;
 pid /run/nginx.pid;
@@ -1070,6 +1006,7 @@ echo "www-data hard nofile 65535" >> /etc/security/limits.conf
 
 				"monit")
 
+					apt-get install monit -y -q
 					# Monit Setup
 					rm /etc/monit/monitrc
 					cat >> /etc/monit/monitrc << EOF
@@ -1221,7 +1158,7 @@ EOF
 						do
 
 						user=$(echo "$ftpuser" | cut -d ":" -f1)
-					userdir=$(echo "$ftpuser" | cut -d ":" -f2)
+						userdir=$(echo "$ftpuser" | cut -d ":" -f2)
 						userpasswd=$(echo "$ftpuser" | cut -d ":" -f3)
 						if [ "$userpasswd" == "random" ]
 							then
@@ -1236,9 +1173,14 @@ EOF
 					done
 				;;
 
+				*)
+					apt-get install $paquet -y -q
+				;;
+
 			esac
 
 		done
+			echo "" >> $dir/mail
 #SSH Setup
 	rm /etc/ssh/sshd_config
 	cat >> /etc/ssh/sshd_config  << EOF
