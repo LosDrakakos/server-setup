@@ -9,6 +9,7 @@ By default it install the following package :
 
 - mysql-server
 - nginx
+- apache2
 - php5-fpm
 - php5-imagick
 - php5-gd
