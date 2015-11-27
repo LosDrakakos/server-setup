@@ -162,6 +162,6 @@ EOF
 
 #### To do
 
-- Add Apache2 to fully supported paquet list
 - Add more packages
 - Add a fully fonctionnal and user friendly mail server (something like a postfix-admin + roundcube but with a sexier UI)
+- Optimization
