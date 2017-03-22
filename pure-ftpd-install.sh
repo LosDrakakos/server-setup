@@ -91,9 +91,9 @@ elif [ -s $dir/insertftpduser.bash ]
 		mv $dir/insertftpduser.bash $dir/scripts/insertftpduser.bash
 else
 	mkdir -p $dir/scripts
-	cd $dir/scripts
+	cd $dir/scripts | exit 1
 	wget -q https://raw.githubusercontent.com/cthulhuely/server-setup/experimental/scripts/insertftpduser.bash #Get ftp users creation script from my github
-	cd $dir
+	cd $dir | exit 1
 fi
 echo "Mysql user for Pureftpd : pureftpd" >> $dir/mail
 echo "Mysql Password for Pureftpd : $ftpdpasswd"  >> $dir/mail

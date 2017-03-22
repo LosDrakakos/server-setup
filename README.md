@@ -48,7 +48,7 @@ and
 
  >If your home public IP is `123.123.123.123`
 
- >Just type in `123.123.123.123/32` but wider range are supported ;)
+ >Type in `123.123.123.123/32` but wider range are supported ;)
  >
 ```shell
 cat >> $dir/white.list << EOF
@@ -141,7 +141,7 @@ EOF
  > If you want a randomly generated password just type 'random' in the password field
 
  > In the example below, username1's will have access to MySQL from anywhere (given that port 3306 is open, or that his IP is in the whitelist), but username2 will need to be on the local machine in order to user his database
- 
+
  >
  ```shell
 cat >> $dir/usersmysql.list << EOF

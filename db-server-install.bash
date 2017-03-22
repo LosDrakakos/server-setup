@@ -8,28 +8,28 @@
 #Test if executed as root
 export DEBIAN_FRONTEND=noninteractive
 if [ "$(id -u)" != "0" ]; then
-	echo "Script must be launched as root: # sudo $0" 1>&2
-	exit 1
+  echo "Script must be launched as root: # sudo $0" 1>&2
+  exit 1
 fi
 ##########################
 #----- DECLARATIONS -----#
 ##########################
 
-dir="$PWD"	#Please don't modify unless you know what you are doing
-WHITE="$dir/white.list"	#Please don't modify unless you know what you are doing
-hostn="srv.example.com"	#Server Hostname (Please use a FSQN and don't forget to setup your PTR)
-CLEF_SSH='KEY1\nKEY2\KEY3' 	#Separate Key with \n
+dir="$PWD"                                                                               #Please don't modify unless you know what you are doing
+WHITE="$dir/white.list"                                                                  #Please don't modify unless you know what you are doing
+hostn="srv.example.com"                                                                  #Server Hostname (Please use a FSQN and don't forget to setup your PTR)
+CLEF_SSH='KEY1\nKEY2\KEY3'                                                               #Separate Key with \n
 EMAILRECIPIENT='me@example.com, my_colleague@example.com, another_colleague@example.com' #A mail will be sent to theese with the differents passwords generated Followed by the Error Log, there's no email adress limit
-MONITRECIPIENT='me@example.com' #Address that will be directly alerted by monit (mmonit notif are independant) PLEASE ONLY USE ONE ADRESS HERE
-MONITSERVER="mmonit.example.com" #M/Monit Server FQDN or IP Address
-MONITUSER="mmonituser" #Distant M/Monit User
-MONITPASSWORD="mmonitpasswd" #Distant M/Monit User Password
-SSH_PORT="22" #SSH Listening port, 22 is default, I recommend to change it
+MONITRECIPIENT='me@example.com'                                                          #Address that will be directly alerted by monit (mmonit notif are independant) PLEASE ONLY USE ONE ADRESS HERE
+MONITSERVER="mmonit.example.com"                                                         #M/Monit Server FQDN or IP Address
+MONITUSER="mmonituser"                                                                   #Distant M/Monit User
+MONITPASSWORD="mmonitpasswd"                                                             #Distant M/Monit User Password
+SSH_PORT="22"                                                                            #SSH Listening port, 22 is default, I recommend to change it
 
 #IP you want to bypasss the firewall (please only use static IP you own, could be dangerous otherwise)
 #IP Format xxx.xxx.xxx.xxx/xx
 
-cat >> $dir/white.list << EOF
+cat >>$dir/white.list <<EOF
 xxx.xxx.xxx.xxx/xx
 EOF
 
@@ -37,18 +37,16 @@ EOF
 #----- FIN DECLARATIONS -----#
 ##############################
 
-
-echo "subject : $hostn Postinstall Report" > $dir/mail
-echo"" >> $dir/mail
-echo"Install dir : $dir" >> $dir/mail
-echo"" >> $dir/mail
+echo "subject : $hostn Postinstall Report" >$dir/mail
+echo"" >>$dir/mail
+echo"Install dir : $dir" >>$dir/mail
+echo"" >>$dir/mail
 #Logging Errors
-if [ -s /var/log/PostInstall.log ]
-	then
-	mv /var/log/PostInstall.log /var/log/PostInstallFIRST.log
-	echo "$(tput setaf 1) Script Already Launched Once$(tput sgr0)"
-	echo "$(tput setaf 1) Script Already Launched Once...$(tput sgr0)" > /var/log/PostInstall.log
-	echo "$(tput setaf 1) Execution will stop, please check  $(tput sgr0)" > /var/log/PostInstall.log
+if [ -s /var/log/PostInstall.log ]; then
+  mv /var/log/PostInstall.log /var/log/PostInstallFIRST.log
+  echo "$(tput setaf 1) Script Already Launched Once$(tput sgr0)"
+  echo "$(tput setaf 1) Script Already Launched Once...$(tput sgr0)" >/var/log/PostInstall.log
+  echo "$(tput setaf 1) Execution will stop, please check  $(tput sgr0)" >/var/log/PostInstall.log
 fi
 exec 2>>/var/log/PostInstall.log
 
@@ -59,10 +57,10 @@ sed -i "s/$hostname/$hostn/g" /etc/hostname
 
 # SSH Key ADD
 mkdir -p /root/.ssh/
-echo -e "$CLEF_SSH" >> /root/.ssh/authorized_keys
+echo -e "$CLEF_SSH" >>/root/.ssh/authorized_keys
 
 # Locking root Password Login
-	passwd root -l
+passwd root -l
 
 # Update&Upgrade
 #Sometimes there's issues with Digital Oceans Repo
@@ -102,15 +100,14 @@ iptables -t filter -A INPUT -p tcp --sport 2812 -j ACCEPT
 iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
 iptables -A OUTPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
 
-for ipok in $(cat $WHITE)
-	do
-	iptables -A INPUT -s $ipok -j ACCEPT
-	iptables -A OUTPUT -d $ipok -j ACCEPT
+for ipok in $(cat $WHITE); do
+  iptables -A INPUT -s $ipok -j ACCEPT
+  iptables -A OUTPUT -d $ipok -j ACCEPT
 done
 
-iptables-save > /root/iptablesbkp
+iptables-save >/root/iptablesbkp
 
-echo "/sbin/iptables-restore < /root/iptablesbkp" >> /etc/rc.local
+echo "/sbin/iptables-restore < /root/iptablesbkp" >>/etc/rc.local
 
 #Paquets installation
 #Always installed Postfix & Rootkit Hunter & OpenSSL
@@ -119,19 +116,19 @@ echo "postfix postfix/mailname string $hostn" | debconf-set-selections
 apt-get install rkhunter openssl postfix -y -q
 
 #Mysql Passwd gen
-openssl rand -base64 12 > $dir/mysqlpasswd
+openssl rand -base64 12 >$dir/mysqlpasswd
 mysqlpasswd=$(cat $dir/mysqlpasswd)
 echo "mysql-server mysql-server/root_password password $mysqlpasswd" | debconf-set-selections
 echo "mysql-server mysql-server/root_password_again password $mysqlpasswd" | debconf-set-selections
 
 #Install
 apt-get install mysql-server -y -q
-echo "Mysql user : root"  >> $dir/mail 			echo "Mysql root Password : $mysqlpasswd"  >> $dir/mail
-echo ""  >> $dir/mail
+echo "Mysql user : root" echo "Mysql root Password : $mysqlpasswd" >>$dir/mail >>$dir/mail
+echo "" >>$dir/mail
 
 #Install Monit
-					rm /etc/monit/monitrc
-					cat >> /etc/monit/monitrc << EOF
+rm /etc/monit/monitrc
+cat >>/etc/monit/monitrc <<EOF
 set alert $MONITRECIPIENT
 set mail-format {
 	from: monit@\$HOST
@@ -201,38 +198,38 @@ service monit restart
 
 #SSH Setup
 	rm /etc/ssh/sshd_config
-	cat >> /etc/ssh/sshd_config  << EOF
-		Port $SSH_PORT
-		Protocol 2
-		HostKey /etc/ssh/ssh_host_rsa_key
-		# HostKey /etc/ssh/ssh_host_dsa_key
-		HostKey /etc/ssh/ssh_host_ecdsa_key
-		HostKey /etc/ssh/ssh_host_ed25519_key
-		UsePrivilegeSeparation yes
-		KeyRegenerationInterval 3600
-		ServerKeyBits 4096
-		SyslogFacility AUTH
-		LogLevel INFO
-		LoginGraceTime 120
-		PermitRootLogin yes
-		StrictModes yes
-		RSAAuthentication yes
-		PubkeyAuthentication yes
-		AuthorizedKeysFile	%h/.ssh/authorized_keys
-		IgnoreRhosts yes
-		RhostsRSAAuthentication no
-		HostbasedAuthentication no
-		PermitEmptyPasswords no
-		ChallengeResponseAuthentication no
-		PasswordAuthentication no
-		X11Forwarding yes
-		X11DisplayOffset 10
-		PrintMotd no
-		PrintLastLog yes
-		TCPKeepAlive yes
-		AcceptEnv LANG LC_*
-		Subsystem sftp /usr/lib/openssh/sftp-server
-		UsePAM yes
+	cat >> /etc/ssh/sshd_config  <<EOF
+Port $SSH_PORT
+Protocol 2
+HostKey /etc/ssh/ssh_host_rsa_key
+# HostKey /etc/ssh/ssh_host_dsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
+UsePrivilegeSeparation yes
+KeyRegenerationInterval 3600
+ServerKeyBits 4096
+SyslogFacility AUTH
+LogLevel INFO
+LoginGraceTime 120
+PermitRootLogin yes
+StrictModes yes
+RSAAuthentication yes
+PubkeyAuthentication yes
+AuthorizedKeysFile	%h/.ssh/authorized_keys
+IgnoreRhosts yes
+RhostsRSAAuthentication no
+HostbasedAuthentication no
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+PasswordAuthentication no
+X11Forwarding yes
+X11DisplayOffset 10
+PrintMotd no
+PrintLastLog yes
+TCPKeepAlive yes
+AcceptEnv LANG LC_*
+Subsystem sftp /usr/lib/openssh/sftp-server
+UsePAM yes
 
 EOF
 
@@ -259,3 +256,4 @@ echo 'Fin du script sans erreurs \o/' >> /var/log/PostInstall.log
 	export DEBIAN_FRONTEND=dialog
 	exit 0
 fi
+EOF
